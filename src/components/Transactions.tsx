@@ -130,12 +130,47 @@ export default function Transactions({ staffName }: { staffName: string }) {
   };
 
   const submitTransaction = async () => {
-    if (!form.partnerId || form.items.length === 0) return;
+    if (!form.partnerId) {
+      alert("Please select a partner.");
+      return;
+    }
+
+    if (form.items.length === 0 || form.items.some(i => i.quantity <= 0 || !i.productId || !i.variationId)) {
+      alert("Please ensure all line items have a selected product and positive quantity.");
+      return;
+    }
     
     const partner = partners.find(p => p.id === form.partnerId);
     
     try {
       await runTransaction(db, async (transaction) => {
+        const stockChanges = new Map<string, {
+          productId: string;
+          variationId: string;
+          quantity: number;
+        }>();
+
+        for (const item of form.items) {
+          const stockDocId = `${form.locationId}_${item.variationId}`;
+          const existing = stockChanges.get(stockDocId);
+          const change = txType === 'PURCHASE' ? item.quantity : -item.quantity;
+
+          stockChanges.set(stockDocId, {
+            productId: item.productId,
+            variationId: item.variationId,
+            quantity: (existing?.quantity || 0) + change
+          });
+        }
+
+        const stockReads = new Map<string, any>();
+        for (const stockDocId of stockChanges.keys()) {
+          const stockRef = doc(db, 'stock', stockDocId);
+          stockReads.set(stockDocId, {
+            ref: stockRef,
+            snap: await transaction.get(stockRef)
+          });
+        }
+
         // 1. Log Transaction
         const totalTax = form.items.reduce((acc, item) => acc + (item.tax || 0), 0);
         const grandTotal = form.items.reduce((acc, item) => acc + (item.quantity * item.price) + (item.tax || 0), 0);
@@ -165,27 +200,24 @@ export default function Transactions({ staffName }: { staffName: string }) {
         };
 
         // 2. Update Stocks
-        for (const item of form.items) {
-          const stockDocId = `${form.locationId}_${item.variationId}`;
-          const stockRef = doc(db, 'stock', stockDocId);
-          const stockSnap = await transaction.get(stockRef);
+        for (const [stockDocId, change] of stockChanges) {
+          const { ref: stockRef, snap: stockSnap } = stockReads.get(stockDocId);
           
           let currentQty = 0;
           if (stockSnap.exists()) {
             currentQty = stockSnap.data().quantity || 0;
           }
 
-          const change = txType === 'PURCHASE' ? item.quantity : -item.quantity;
-          const newQty = currentQty + change;
+          const newQty = currentQty + change.quantity;
           
           if (newQty < 0 && txType === 'SALE') {
-            throw new Error(`Insufficient stock for ${item.productId}`);
+            throw new Error(`Insufficient stock for ${change.productId}`);
           }
 
           transaction.set(stockRef, {
             locationId: form.locationId,
-            variationId: item.variationId,
-            productId: item.productId,
+            variationId: change.variationId,
+            productId: change.productId,
             quantity: newQty,
             lastUpdated: serverTimestamp()
           }, { merge: true });

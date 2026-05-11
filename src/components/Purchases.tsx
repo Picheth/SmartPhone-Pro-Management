@@ -242,8 +242,13 @@ export default function Purchases() {
   };
 
   const handleSave = async () => {
-    if (!form.locationId || !form.partnerId || form.items.length === 0 || !form.staffName) {
-      alert("Please fill in all required fields and add at least one item.");
+    if (!form.locationId || !form.partnerId || !form.staffName.trim()) {
+      alert("Please fill in location, supplier, and staff name.");
+      return;
+    }
+
+    if (form.items.length === 0 || form.items.some(i => i.quantity <= 0 || !i.productId || !i.variationId)) {
+      alert("Please add items with valid variations and positive quantities.");
       return;
     }
 
@@ -251,6 +256,29 @@ export default function Purchases() {
     try {
       await runTransaction(db, async (transaction) => {
         const partner = partners.find(p => p.id === form.partnerId);
+        const stockChanges = new Map<string, {
+          ref: ReturnType<typeof doc>;
+          productId: string;
+          variationId: string;
+          quantity: number;
+        }>();
+
+        for (const item of form.items) {
+          const stockDocId = `${form.locationId}_${item.variationId}`;
+          const existing = stockChanges.get(stockDocId);
+
+          stockChanges.set(stockDocId, {
+            ref: doc(db, 'stock', stockDocId),
+            productId: item.productId,
+            variationId: item.variationId,
+            quantity: (existing?.quantity || 0) + item.quantity
+          });
+        }
+
+        const stockReads = new Map<string, any>();
+        for (const [stockDocId, change] of stockChanges) {
+          stockReads.set(stockDocId, await transaction.get(change.ref));
+        }
         
         // 1. Transaction Log
         const txData = {
@@ -281,22 +309,20 @@ export default function Purchases() {
         transaction.set(txRef, txData);
 
         // 2. Update Stock Levels
-        for (const item of form.items) {
-          const stockDocId = `${form.locationId}_${item.variationId}`;
-          const stockRef = doc(db, 'stock', stockDocId);
-          const stockSnap = await transaction.get(stockRef);
+        for (const [stockDocId, change] of stockChanges) {
+          const stockSnap = stockReads.get(stockDocId);
 
           if (stockSnap.exists()) {
-            transaction.update(stockRef, {
-              quantity: stockSnap.data().quantity + item.quantity,
+            transaction.update(change.ref, {
+              quantity: stockSnap.data().quantity + change.quantity,
               lastUpdated: serverTimestamp()
             });
           } else {
-            transaction.set(stockRef, {
+            transaction.set(change.ref, {
               locationId: form.locationId,
-              productId: item.productId,
-              variationId: item.variationId,
-              quantity: item.quantity,
+              productId: change.productId,
+              variationId: change.variationId,
+              quantity: change.quantity,
               lastUpdated: serverTimestamp()
             });
           }
@@ -516,7 +542,7 @@ export default function Purchases() {
                        Product Items
                     </h3>
                     <button 
-                       onClick={addItem}
+                       onClick={() => addItem()}
                        className="flex items-center gap-2 text-xs font-black text-blue-600 bg-blue-50 px-3 py-1.5 rounded-lg hover:bg-blue-100 transition-colors"
                     >
                        <Plus className="w-3.5 h-3.5" />

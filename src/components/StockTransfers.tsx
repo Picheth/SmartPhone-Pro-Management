@@ -94,14 +94,55 @@ export default function StockTransfers({ staffName }: { staffName: string }) {
   };
 
   const submitTransfer = async () => {
-    if (!form.fromLocationId || !form.toLocationId || form.fromLocationId === form.toLocationId) {
+    if (!form.fromLocationId || !form.toLocationId) {
+      alert("Please select both source and target locations.");
+      return;
+    }
+
+    if (form.fromLocationId === form.toLocationId) {
         alert("Select different source and destination locations.");
         return;
     }
-    if (form.items.length === 0) return;
+
+    if (form.items.length === 0 || form.items.some(i => !i.productId || !i.variationId || i.quantity <= 0)) {
+      alert("Please add items with valid variations and positive quantities.");
+      return;
+    }
 
     try {
       await runTransaction(db, async (transaction) => {
+        const stockMoves = new Map<string, {
+          productId: string;
+          variationId: string;
+          quantity: number;
+        }>();
+
+        for (const item of form.items) {
+          const existing = stockMoves.get(item.variationId);
+          stockMoves.set(item.variationId, {
+            productId: item.productId,
+            variationId: item.variationId,
+            quantity: (existing?.quantity || 0) + item.quantity
+          });
+        }
+
+        const stockReads = new Map<string, any>();
+        for (const item of stockMoves.values()) {
+          const sourceDocId = `${form.fromLocationId}_${item.variationId}`;
+          const destDocId = `${form.toLocationId}_${item.variationId}`;
+          const sourceRef = doc(db, 'stock', sourceDocId);
+          const destRef = doc(db, 'stock', destDocId);
+
+          stockReads.set(sourceDocId, {
+            ref: sourceRef,
+            snap: await transaction.get(sourceRef)
+          });
+          stockReads.set(destDocId, {
+            ref: destRef,
+            snap: await transaction.get(destRef)
+          });
+        }
+
         const transferData = {
           fromLocationId: form.fromLocationId,
           toLocationId: form.toLocationId,
@@ -119,11 +160,10 @@ export default function StockTransfers({ staffName }: { staffName: string }) {
         };
 
         // Update Stocks
-        for (const item of form.items) {
+        for (const item of stockMoves.values()) {
           // 1. Decrease Source
           const sourceDocId = `${form.fromLocationId}_${item.variationId}`;
-          const sourceRef = doc(db, 'stock', sourceDocId);
-          const sourceSnap = await transaction.get(sourceRef);
+          const { ref: sourceRef, snap: sourceSnap } = stockReads.get(sourceDocId);
           
           let sourceQty = sourceSnap.exists() ? (sourceSnap.data().quantity || 0) : 0;
           if (sourceQty < item.quantity) {
@@ -139,8 +179,7 @@ export default function StockTransfers({ staffName }: { staffName: string }) {
 
           // 2. Increase Destination
           const destDocId = `${form.toLocationId}_${item.variationId}`;
-          const destRef = doc(db, 'stock', destDocId);
-          const destSnap = await transaction.get(destRef);
+          const { ref: destRef, snap: destSnap } = stockReads.get(destDocId);
           
           let destQty = destSnap.exists() ? (destSnap.data().quantity || 0) : 0;
           transaction.set(destRef, { 

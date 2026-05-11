@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react';
 import { Users, User, ArrowRightLeft, PlusCircle } from 'lucide-react';
-import { collection, onSnapshot, addDoc } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Customer } from '../types';
 
 export default function Customers() {
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [newP, setNewP] = useState({ code: '', name: '' });
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     const unsub = onSnapshot(collection(db, 'customers'), s => 
@@ -17,9 +18,42 @@ export default function Customers() {
   }, []);
 
   const addPartner = async () => {
-    if (!newP.code || !newP.name) return;
-    await addDoc(collection(db, 'customers'), newP);
-    setNewP({ code: '', name: '' });
+    const code = newP.code.trim().toUpperCase();
+    const name = newP.name.trim();
+
+    if (!code || !name) {
+      alert('Customer name and code are required.');
+      return;
+    }
+
+    if (code.length > 50 || name.length > 100) {
+      alert('Input too long. Max 50 characters for code and 100 for name.');
+      return;
+    }
+
+    if (!/^[a-zA-Z0-9-]+$/.test(code)) {
+      alert('Customer code must be alphanumeric. Hyphens are allowed.');
+      return;
+    }
+
+    if (customers.some(customer => customer.code.toUpperCase() === code)) {
+      alert('A customer with this code already exists.');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await addDoc(collection(db, 'customers'), {
+        code,
+        name,
+        createdAt: serverTimestamp()
+      });
+      setNewP({ code: '', name: '' });
+    } catch (error) {
+      handleFirestoreError(error, OperationType.CREATE, 'customers');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -59,9 +93,10 @@ export default function Customers() {
           <div className="flex items-end">
             <button 
               onClick={addPartner}
-              className="w-full bg-blue-600 text-white h-[42px] px-6 rounded-lg font-bold hover:bg-blue-700 transition-all shadow-sm text-sm"
+              disabled={isSaving}
+              className="w-full bg-blue-600 text-white h-[42px] px-6 rounded-lg font-bold hover:bg-blue-700 disabled:bg-slate-300 disabled:cursor-not-allowed transition-all shadow-sm text-sm"
             >
-              Add Customer
+              {isSaving ? 'Saving...' : 'Add Customer'}
             </button>
           </div>
         </div>

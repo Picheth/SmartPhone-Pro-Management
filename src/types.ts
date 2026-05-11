@@ -70,6 +70,7 @@ export interface Transaction {
     sku?: string;
     quantity: number;
     price?: number;
+    unitPrice?: number;
     tax?: number;
     warranty?: string;
   }>;
@@ -80,6 +81,7 @@ export interface Transaction {
   partnerType?: 'Supplier' | 'Customer' | 'Dealer';
   staffName: string;
   timestamp: any;
+  date?: string;
   note?: string;
   referenceNo?: string;
   purchaseStatus?: 'Ordered' | 'Pending' | 'Received';

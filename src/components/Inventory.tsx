@@ -21,7 +21,7 @@ import {
   TrendingDown,
   ArrowRightLeft
 } from 'lucide-react';
-import { collection, onSnapshot, addDoc, serverTimestamp, setDoc, doc, updateDoc, deleteDoc, writeBatch, runTransaction, query, where, orderBy } from 'firebase/firestore';
+import { collection, onSnapshot, addDoc, serverTimestamp, setDoc, doc, updateDoc, deleteDoc, writeBatch, runTransaction, query, where, orderBy, getDocs, limit } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Product, Variation, Stock, Location, Transaction } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
@@ -139,7 +139,14 @@ export default function Inventory() {
   };
 
   const saveProduct = async () => {
-    if (!productForm.name.trim()) return;
+    const trimmedName = productForm.name.trim();
+    if (!trimmedName) return;
+
+    if (trimmedName.length > 200) {
+      alert("Product name is too long (Max 200 characters).");
+      return;
+    }
+
     if (productForm.variations.some(v => v.error)) {
       alert("Please fix validation errors before saving.");
       return;
@@ -152,13 +159,13 @@ export default function Inventory() {
 
       if (editingProduct) {
         await updateDoc(doc(db, 'products', editingProduct.id), {
-          name: productForm.name,
+          name: trimmedName,
           variations: cleanVariations,
           updatedAt: serverTimestamp()
         });
       } else {
         const docRef = await addDoc(collection(db, 'products'), {
-          name: productForm.name,
+          name: trimmedName,
           variations: cleanVariations,
           createdAt: serverTimestamp()
         });
@@ -344,42 +351,34 @@ export default function Inventory() {
     setHistoryItems([]);
 
     try {
-      // Query transactions that contain this variation
-      // Since array-contains doesn't work for objects, we fetch all transactions and filter
-      // Or we can look for specific fields if they existed, but standard is filtering client-side for this scale
-      const transUnsub = onSnapshot(
-        query(collection(db, 'transactions'), orderBy('timestamp', 'desc')),
-        (snapshot) => {
-          const movements = snapshot.docs
-            .map(doc => ({ id: doc.id, ...doc.data() } as Transaction))
-            .filter(t => t.items.some(i => i.variationId === variationId))
-            .flatMap(t => {
-              const item = t.items.find(i => i.variationId === variationId);
-              if (!item) return [];
-              
-              return [{
-                id: t.id,
-                type: t.type,
-                date: t.timestamp?.seconds ? new Date(t.timestamp.seconds * 1000).toLocaleString() : 'N/A',
-                quantity: item.quantity,
-                location: locations.find(l => l.id === t.locationId)?.name || 'N/A',
-                partner: t.partnerName || 'Internal',
-                staff: t.staffName,
-                reference: t.referenceNo || t.id.slice(0, 8)
-              }];
-            });
-          setHistoryItems(movements);
-          setIsLoadingHistory(false);
-        },
-        (error) => {
-           console.error("History fetch error:", error);
-           setIsLoadingHistory(false);
-        }
-      );
+      // Query recent transactions and filter client-side for the target variation
+      const q = query(collection(db, 'transactions'), orderBy('timestamp', 'desc'), limit(200));
+      const snapshot = await getDocs(q);
+      
+      const movements = snapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() } as Transaction))
+        .filter(t => t.items.some(i => i.variationId === variationId))
+        .flatMap(t => {
+          const item = t.items.find(i => i.variationId === variationId);
+          if (!item) return [];
+          
+          return [{
+            id: t.id,
+            type: t.type,
+            date: t.timestamp?.seconds ? new Date(t.timestamp.seconds * 1000).toLocaleString() : 'N/A',
+            quantity: item.quantity,
+            location: locations.find(l => l.id === t.locationId)?.name || 'N/A',
+            partner: t.partnerName || 'Internal',
+            staff: t.staffName,
+            reference: t.referenceNo || t.id.slice(0, 8)
+          }];
+        });
 
-      return transUnsub;
+      setHistoryItems(movements);
     } catch (error) {
       console.error("Failed to load history:", error);
+      alert("Could not load history. Check your connection.");
+    } finally {
       setIsLoadingHistory(false);
     }
   };

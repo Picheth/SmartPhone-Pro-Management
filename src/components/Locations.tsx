@@ -88,12 +88,26 @@ export default function Locations() {
   };
 
   const handleSave = async () => {
-    if (!form.name || !form.code) return;
+    if (!form.name.trim() || !form.code.trim()) {
+      alert("Location name and code are required.");
+      return;
+    }
+
+    // Security Fix: Payload 6 & 7 (Resource Poisoning Prevention)
+    const codeRegex = /^[a-zA-Z0-9-]+$/;
+    if (!codeRegex.test(form.code)) {
+      alert("Location code must be alphanumeric (hyphens allowed).");
+      return;
+    }
+    if (form.code.length > 50 || form.name.length > 100) {
+      alert("Input too long. Max 50 chars for code and 100 for name.");
+      return;
+    }
     
     try {
       const data = {
-        name: form.name,
-        code: form.code,
+        name: form.name.trim(),
+        code: form.code.trim().toUpperCase(),
         type: form.type,
         parentId: form.type === 'Sub' ? form.parentId : '',
         updatedAt: serverTimestamp()
