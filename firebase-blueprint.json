@@ -1,0 +1,137 @@
+{
+  "entities": {
+    "Product": {
+      "title": "Product",
+      "description": "A base product model with name and potential variations.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "variations": {
+          "type": "array",
+          "items": { "$ref": "#/entities/Variation" }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name"]
+    },
+    "Variation": {
+      "title": "Variation",
+      "description": "Specific variations of a product.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "sku": { "type": "string" },
+        "storage": { "type": "string" },
+        "color": { "type": "string" },
+        "countryCode": { "type": "string" },
+        "condition": { "type": "string" }
+      }
+    },
+    "Stock": {
+      "title": "Stock",
+      "description": "Inventory count for a variation at a specific location.",
+      "type": "object",
+      "properties": {
+        "locationId": { "type": "string" },
+        "variationId": { "type": "string" },
+        "productId": { "type": "string" },
+        "quantity": { "type": "number" },
+        "lastUpdated": { "type": "string", "format": "date-time" }
+      }
+    },
+    "Supplier": {
+      "title": "Supplier",
+      "description": "Vendor information.",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "name": { "type": "string" },
+        "type": { "enum": ["Main", "Sub"] },
+        "parentCode": { "type": "string" }
+      }
+    },
+    "Customer": {
+      "title": "Customer",
+      "description": "Client information.",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "name": { "type": "string" }
+      }
+    },
+    "Dealer": {
+      "title": "Dealer",
+      "description": "B2B partner information.",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "name": { "type": "string" }
+      }
+    },
+    "Transaction": {
+      "title": "Transaction",
+      "description": "Log of sales or purchases.",
+      "type": "object",
+      "properties": {
+        "type": { "enum": ["SALE", "PURCHASE", "TRANSFER"] },
+        "items": { 
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "productId": { "type": "string" },
+              "variationId": { "type": "string" },
+              "sku": { "type": "string" },
+              "quantity": { "type": "number" },
+              "unitPrice": { "type": "number" },
+              "tax": { "type": "number" },
+              "warranty": { "type": "string" },
+              "productName": { "type": "string" }
+            }
+          }
+        },
+        "locationId": { "type": "string" },
+        "fromLocationId": { "type": "string" },
+        "partnerId": { "type": "string" },
+        "partnerType": { "enum": ["Supplier", "Customer", "Dealer"] },
+        "staffName": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "note": { "type": "string" }
+      }
+    },
+    "Location": {
+      "title": "Location",
+      "description": "Physical warehouses or retail stores.",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "name": { "type": "string" }
+      },
+      "required": ["code", "name"]
+    },
+    "StockTransfer": {
+      "title": "Stock Transfer",
+      "description": "Inventory movement between internal locations.",
+      "type": "object",
+      "properties": {
+        "fromLocationId": { "type": "string" },
+        "toLocationId": { "type": "string" },
+        "items": { "type": "array" },
+        "staffName": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "status": { "enum": ["PENDING", "COMPLETED", "CANCELLED"] },
+        "note": { "type": "string" }
+      }
+    }
+  },
+  "firestore": {
+    "products": { "schema": "Product", "description": "Catalog of phones" },
+    "stock": { "schema": "Stock", "description": "Real-time inventory" },
+    "suppliers": { "schema": "Supplier", "description": "Supplier database" },
+    "customers": { "schema": "Customer", "description": "Customer database" },
+    "dealers": { "schema": "Dealer", "description": "Dealer database" },
+    "transactions": { "schema": "Transaction", "description": "Order history" },
+    "locations": { "schema": "Location", "description": "Warehouse locations" },
+    "transfers": { "schema": "StockTransfer", "description": "Internal stock movements" }
+  }
+}

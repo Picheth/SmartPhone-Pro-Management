@@ -1,0 +1,113 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Primitive Definition
+    function isSignedIn() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Validation Helpers
+    function isValidProduct(p) {
+      return p.name is string && p.name.size() > 0 && p.name.size() <= 200
+        && (p.get('variations', []) is list);
+    }
+
+    function isValidStock(s) {
+      return s.quantity is number && s.quantity >= 0
+        && s.locationId is string && s.variationId is string;
+    }
+
+    function isValidSupplier(s) {
+      return s.name is string && s.name.size() > 0
+        && s.code is string && s.code.size() > 0;
+    }
+
+    function isValidCustomer(c) {
+      return c.name is string && c.name.size() > 0
+        && c.code is string && c.code.size() > 0;
+    }
+
+    function isValidDealer(d) {
+      return d.name is string && d.name.size() > 0
+        && d.code is string && d.code.size() > 0;
+    }
+
+    function isValidTransaction(t) {
+      return t.type in ['SALE', 'PURCHASE', 'TRANSFER']
+        && t.items is list && t.items.size() > 0
+        && t.locationId is string;
+    }
+
+    function isValidLocation(l) {
+      return l.name is string && l.name.size() > 0
+        && l.code is string && l.code.size() > 0;
+    }
+
+    function isValidTransfer(t) {
+      return t.fromLocationId is string && t.toLocationId is string
+        && t.items is list && t.items.size() > 0
+        && t.status in ['PENDING', 'COMPLETED', 'CANCELLED'];
+    }
+
+    match /products/{productId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidProduct(incoming());
+      allow update: if isSignedIn() && isValidProduct(incoming());
+      allow delete: if isSignedIn();
+    }
+
+    match /stock/{stockId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidStock(incoming());
+    }
+
+    match /suppliers/{supplierId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidSupplier(incoming());
+    }
+
+    match /customers/{customerId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidCustomer(incoming());
+    }
+
+    match /dealers/{dealerId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidDealer(incoming());
+    }
+
+    match /transactions/{transactionId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidTransaction(incoming());
+      allow update, delete: if false; // Immutable logs
+    }
+
+    match /locations/{locationId} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isValidLocation(incoming());
+    }
+
+    match /transfers/{transferId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidTransfer(incoming());
+      allow update: if isSignedIn() && isValidTransfer(incoming());
+    }
+  }
+}
