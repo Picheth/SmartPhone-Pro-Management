@@ -6,6 +6,10 @@
       "type": "object",
       "properties": {
         "name": { "type": "string" },
+        "type": { 
+          "type": "string",
+          "enum": ["Mobile Phone", "Tablet", "Laptop", "PC / Desktop", "Smartwatch", "Accessory", "Repair Parts", "Material"]
+        },
         "variations": {
           "type": "array",
           "items": { "$ref": "#/entities/Variation" }

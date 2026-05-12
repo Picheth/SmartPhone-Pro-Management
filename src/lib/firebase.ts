@@ -1,10 +1,19 @@
-import { initializeApp } from 'firebase/app';
+import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
-import firebaseConfig from '../../firebase-applet-config.json';
 
-const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+const firebaseConfig = {
+  apiKey: "AIzaSyBKYkrd7sW1V3DeS5VsRPYr7nmjn7ODCEM",
+  authDomain: "inventory-management-2652c.firebaseapp.com",
+  projectId: "inventory-management-2652c",
+  storageBucket: "inventory-management-2652c.firebasestorage.app",
+  messagingSenderId: "393233575693",
+  appId: "1:393233575693:web:073cc83e4fa0d0c149ca44",
+  measurementId: "G-5KF9E4SK5D"
+};
+
+export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
+export const db = getFirestore(app);
 export const auth = getAuth();
 
 export enum OperationType {

@@ -1,9 +1,17 @@
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, serverTimestamp, writeBatch, doc } from 'firebase/firestore';
-import firebaseConfig from '../firebase-applet-config.json';
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBKYkrd7sW1V3DeS5VsRPYr7nmjn7ODCEM",
+  authDomain: "inventory-management-2652c.firebaseapp.com",
+  projectId: "inventory-management-2652c",
+  storageBucket: "inventory-management-2652c.firebasestorage.app",
+  messagingSenderId: "393233575693",
+  appId: "1:393233575693:web:073cc83e4fa0d0c149ca44",
+};
 
 const app = initializeApp(firebaseConfig);
-const db = getFirestore(app, (firebaseConfig as any).firestoreDatabaseId);
+const db = getFirestore(app);
 
 const productsData = [
   {

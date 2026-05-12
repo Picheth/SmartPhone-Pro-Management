@@ -8,6 +8,9 @@ export interface Variation {
 }
 
 export interface Product {
+  sku?: string;
+  type?: string;
+  brand?: string;
   id: string;
   name: string;
   variations: Variation[];

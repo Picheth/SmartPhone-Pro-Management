@@ -23,9 +23,75 @@ import {
 } from 'lucide-react';
 import { collection, onSnapshot, addDoc, serverTimestamp, setDoc, doc, updateDoc, deleteDoc, writeBatch, runTransaction, query, where, orderBy, getDocs, limit } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
+import { iphoneSpecs as iphoneModelSpecs } from '../../iphoneSpecs';
 import { Product, Variation, Stock, Location, Transaction } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
+
+const PRODUCT_TYPES = [
+  "Mobile Phone",
+  "Tablet",
+  "Laptop",
+  "PC / Desktop",
+  "Smartwatch",
+  "Accessory",
+  "Repair Parts",
+  "Material"
+];
+
+type ProductModelSpec = {
+  brand: string;
+  model: string;
+  productId?: string;
+  name?: string;
+};
+
+const iphoneSpecs: ProductModelSpec[] = iphoneModelSpecs;
+
+const tabletSpecs: ProductModelSpec[] = [
+  { brand: 'Apple', model: 'iPad Pro M4' },
+  { brand: 'Apple', model: 'iPad Air M2' },
+  { brand: 'Samsung', model: 'Galaxy Tab S10 Ultra' },
+];
+
+const laptopSpecs: ProductModelSpec[] = [
+  { brand: 'Apple', model: 'MacBook Pro M3' },
+  { brand: 'Apple', model: 'MacBook Air M2' },
+  { brand: 'Dell', model: 'XPS 15' },
+  { brand: 'ASUS', model: 'ROG Zephyrus G16' },
+];
+
+const watchSpecs: ProductModelSpec[] = [
+  { brand: 'Apple', model: 'Apple Watch Ultra 2' },
+  { brand: 'Samsung', model: 'Galaxy Watch 7' },
+];
+
+const productModelTypes = ['Mobile Phone', 'Tablet', 'Laptop', 'PC', 'PC / Desktop', 'Smart Watch', 'Smartwatch', 'Accessory', 'Repair Parts', 'Material'];
+
+const getModelSpecsForType = (type: string): ProductModelSpec[] | undefined => {
+  switch (type) {
+    case 'Mobile Phone':
+      return iphoneSpecs;
+    case 'Tablet':
+      return tabletSpecs;
+    case 'Laptop':
+      return laptopSpecs;
+    case 'Smart Watch':
+    case 'Smartwatch':
+      return watchSpecs;
+    case 'PC':
+    case 'PC / Desktop':
+      return [];
+    case 'Accessory':
+      return [];
+    case 'Repair Parts':
+      return [];
+    case 'Material':
+      return [];
+    default:
+      return undefined;
+  }
+};
 
 export default function Inventory() {
   const [products, setProducts] = useState<Product[]>([]);
@@ -34,10 +100,12 @@ export default function Inventory() {
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState({
     sku: '',
+    productId: '',
     storage: '',
     color: '',
     countryCode: '',
-    condition: ''
+    condition: '',
+    type: ''
   });
   const [showFilters, setShowFilters] = useState(false);
   const [isAddingMode, setIsAddingMode] = useState(false);
@@ -66,11 +134,24 @@ export default function Inventory() {
   // Form State
   const [productForm, setProductForm] = useState({
     name: '',
+    type: 'Mobile Phone',
+    sku: '',
     variations: [] as (Variation & { initialQty?: string, error?: string })[]
   });
 
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
   const [bulkInput, setBulkInput] = useState('');
+  const getProductOptions = () => getModelSpecsForType(productForm.type);
+  const productOptions = getProductOptions() ?? [];
+
+  const handleProductNameChange = (model: string) => {
+    const spec = productOptions.find(option => option.model === model);
+    setProductForm({
+      ...productForm,
+      name: model,
+      sku: spec?.productId || '',
+    });
+  };
 
   useEffect(() => {
     const unsubProducts = onSnapshot(collection(db, 'products'), (snapshot) => {
@@ -127,13 +208,13 @@ export default function Inventory() {
   };
 
   const openAddMode = () => {
-    setProductForm({ name: '', variations: [] });
+    setProductForm({ name: '', type: 'Mobile Phone', sku: '', variations: [] });
     setEditingProduct(null);
     setIsAddingMode(true);
   };
 
   const openEditMode = (product: Product) => {
-    setProductForm({ name: product.name, variations: [...product.variations] });
+    setProductForm({ name: product.name, type: product.type || 'Mobile Phone', sku: product.sku || '', variations: [...product.variations] });
     setEditingProduct(product);
     setIsAddingMode(true);
   };
@@ -160,12 +241,16 @@ export default function Inventory() {
       if (editingProduct) {
         await updateDoc(doc(db, 'products', editingProduct.id), {
           name: trimmedName,
+          sku: productForm.sku,
+          type: productForm.type,
           variations: cleanVariations,
           updatedAt: serverTimestamp()
         });
       } else {
         const docRef = await addDoc(collection(db, 'products'), {
           name: trimmedName,
+          sku: productForm.sku,
+          type: productForm.type,
           variations: cleanVariations,
           createdAt: serverTimestamp()
         });
@@ -198,7 +283,7 @@ export default function Inventory() {
         if (hasStockUpdates) await batch.commit();
       }
 
-      setProductForm({ name: '', variations: [] });
+      setProductForm({ name: '', type: 'Mobile Phone', sku: '', variations: [] });
       setEditingProduct(null);
       setIsAddingMode(false);
     } catch (error) {
@@ -210,7 +295,8 @@ export default function Inventory() {
   const filteredProducts = products.filter(p => {
     const s = search.toLowerCase();
     const nameMatch = p.name.toLowerCase().includes(s);
-    
+    const typeMatch = !filters.type || p.type === filters.type;
+
     // Check if any variation matches the specific filters AND the search query
     const hasMatchingVariation = p.variations.some(v => {
       const matchesSearch = !s || 
@@ -231,7 +317,7 @@ export default function Inventory() {
       return matchesSearch && matchesFilters;
     });
 
-    return hasMatchingVariation;
+    return hasMatchingVariation && typeMatch;
   });
 
   // Get unique values for filters
@@ -604,6 +690,17 @@ export default function Inventory() {
             className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 bg-slate-50 border border-slate-200 rounded-xl"
           >
             <div className="space-y-1">
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Product Type</label>
+              <select 
+                className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:border-blue-500"
+                value={filters.type}
+                onChange={(e) => setFilters({ ...filters, type: e.target.value })}
+              >
+                <option value="">All Categories</option>
+                {PRODUCT_TYPES.map(v => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1">
               <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Storage</label>
               <select 
                 className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs outline-none focus:border-blue-500"
@@ -650,7 +747,7 @@ export default function Inventory() {
             {Object.values(filters).some(f => f) && (
               <div className="col-span-2 md:col-span-4 flex justify-end">
                 <button 
-                  onClick={() => setFilters({ sku: '', storage: '', color: '', countryCode: '', condition: '' })}
+                  onClick={() => setFilters({ productId: '', sku: '', storage: '', color: '', countryCode: '', condition: '', type: '' })}
                   className="text-[10px] font-bold text-red-500 uppercase flex items-center gap-1 hover:bg-red-50 px-2 py-1 rounded transition-colors"
                 >
                   <X className="w-3 h-3" />
@@ -684,15 +781,44 @@ export default function Inventory() {
               </div>
 
               <div className="space-y-4">
-                <div className="space-y-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Product Model Name</label>
-                  <input 
-                    type="text" 
-                    placeholder="e.g. iPhone 15 Pro Max"
-                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:border-blue-500 outline-none transition-all"
-                    value={productForm.name}
-                    onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+                  <div className="md:col-span-2 space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">
+                      {productModelTypes.includes(productForm.type) ? `Select ${productForm.type} Model` : 'Product Model Name'}
+                    </label>
+                    {productOptions.length > 0 ? (
+                      <select 
+                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:border-blue-500 outline-none transition-all"
+                        value={productForm.name}
+                        onChange={(e) => handleProductNameChange(e.target.value)}
+                      >
+                        <option value="">Choose a model...</option>
+                        {productOptions.map(spec => (
+                          <option key={spec.model} value={spec.model}>{spec.brand} {spec.model}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input 
+                        type="text" 
+                        placeholder="e.g. AirPods Pro 2"
+                        className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:border-blue-500 outline-none transition-all"
+                        value={productForm.name}
+                        onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
+                      />
+                    )}
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Category Type</label>
+                    <select 
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:border-blue-500 outline-none transition-all"
+                      value={productForm.type}
+                      onChange={(e) => setProductForm({ ...productForm, type: e.target.value, name: '', sku: '' })}
+                    >
+                      {PRODUCT_TYPES.map(type => (
+                        <option key={type} value={type}>{type}</option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
                 <div className="space-y-4">
@@ -710,46 +836,97 @@ export default function Inventory() {
                   <div className="space-y-3">
                     {productForm.variations.map((v) => (
                       <div key={v.id} className="grid grid-cols-2 md:grid-cols-6 gap-3 p-4 bg-slate-50 rounded-xl border border-slate-200 relative group">
-                        <div className="space-y-1">
-                          <label className="text-[9px] text-slate-400 font-bold uppercase pl-0.5">SKU</label>
-                          <input 
-                            placeholder="e.g. I15PM-256-TI" 
-                            className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-blue-500 font-mono"
-                            value={v.sku} onChange={(e) => updateVariation(v.id, 'sku', e.target.value)}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[9px] text-slate-400 font-bold uppercase pl-0.5">Storage</label>
-                          <input 
-                            placeholder="e.g. 256GB" 
-                            className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-blue-500"
-                            value={v.storage} onChange={(e) => updateVariation(v.id, 'storage', e.target.value)}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[9px] text-slate-400 font-bold uppercase pl-0.5">Color</label>
-                          <input 
-                            placeholder="e.g. Titanium" 
-                            className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-blue-500"
-                            value={v.color} onChange={(e) => updateVariation(v.id, 'color', e.target.value)}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[9px] text-slate-400 font-bold uppercase pl-0.5">Country</label>
-                          <input 
-                            placeholder="e.g. LL/A" 
-                            className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-blue-500"
-                            value={v.countryCode} onChange={(e) => updateVariation(v.id, 'countryCode', e.target.value)}
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[9px] text-slate-400 font-bold uppercase pl-0.5">Condition</label>
-                          <input 
-                            placeholder="e.g. New" 
-                            className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-blue-500"
-                            value={v.condition} onChange={(e) => updateVariation(v.id, 'condition', e.target.value)}
-                          />
-                        </div>
+                        {(() => {
+                          const spec = iphoneModelSpecs.find(s => s.model === productForm.name);
+                          return (
+                            <>
+                              <div className="space-y-1">
+                                <label className="text-[9px] text-slate-400 font-bold uppercase pl-0.5">SKU</label>
+                                <input 
+                                  placeholder="e.g. I15PM-256-TI" 
+                                  className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-blue-500 font-mono"
+                                  value={v.sku} onChange={(e) => updateVariation(v.id, 'sku', e.target.value)}
+                                />
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[9px] text-slate-400 font-bold uppercase pl-0.5">Storage</label>
+                                {spec ? (
+                                  <select 
+                                    className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-blue-500"
+                                    value={v.storage} onChange={(e) => updateVariation(v.id, 'storage', e.target.value)}
+                                  >
+                                    <option value="">Select...</option>
+                                    {spec.storages.map(s => <option key={s} value={s}>{s}</option>)}
+                                  </select>
+                                ) : (
+                                  <input 
+                                    placeholder="e.g. 256GB" 
+                                    className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-blue-500"
+                                    value={v.storage} onChange={(e) => updateVariation(v.id, 'storage', e.target.value)}
+                                  />
+                                )}
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[9px] text-slate-400 font-bold uppercase pl-0.5">Color</label>
+                                {spec ? (
+                                  <select 
+                                    className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-blue-500"
+                                    value={v.color} onChange={(e) => updateVariation(v.id, 'color', e.target.value)}
+                                  >
+                                    <option value="">Select...</option>
+                                    {spec.colors.map(c => <option key={c} value={c}>{c}</option>)}
+                                  </select>
+                                ) : (
+                                  <input 
+                                    placeholder="e.g. Titanium" 
+                                    className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-blue-500"
+                                    value={v.color} onChange={(e) => updateVariation(v.id, 'color', e.target.value)}
+                                  />
+                                )}
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[9px] text-slate-400 font-bold uppercase pl-0.5">Region / Country</label>
+                                {spec ? (
+                                  <select 
+                                    className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-blue-500"
+                                    value={v.countryCode} 
+                                    onChange={(e) => updateVariation(v.id, 'countryCode', e.target.value)}
+                                  >
+                                    <option value="">Select...</option>
+                                    {spec.regions.map(r => {
+                                      const code = spec.regionCodes?.[r] || r;
+                                      return <option key={r} value={code}>{r} ({code})</option>;
+                                    })}
+                                  </select>
+                                ) : (
+                                  <input 
+                                    placeholder="e.g. LL/A" 
+                                    className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-blue-500"
+                                    value={v.countryCode} onChange={(e) => updateVariation(v.id, 'countryCode', e.target.value)}
+                                  />
+                                )}
+                              </div>
+                              <div className="space-y-1">
+                                <label className="text-[9px] text-slate-400 font-bold uppercase pl-0.5">Condition</label>
+                                {spec ? (
+                                  <select 
+                                    className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-blue-500"
+                                    value={v.condition} onChange={(e) => updateVariation(v.id, 'condition', e.target.value)}
+                                  >
+                                    <option value="">Select...</option>
+                                    {spec.conditions.map(c => <option key={c} value={c}>{c}</option>)}
+                                  </select>
+                                ) : (
+                                  <input 
+                                    placeholder="e.g. New" 
+                                    className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-blue-500"
+                                    value={v.condition} onChange={(e) => updateVariation(v.id, 'condition', e.target.value)}
+                                  />
+                                )}
+                              </div>
+                            </>
+                          );
+                        })()}
                         <div className="space-y-1">
                           <label className="text-[9px] text-slate-400 font-bold uppercase pl-0.5">Initial Qty</label>
                           <div className="relative">

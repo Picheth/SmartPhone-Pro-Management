@@ -22,17 +22,12 @@ import {
   History,
   Smartphone,
   ShoppingBag,
-  ShoppingBasket
+  ShoppingBasket,
+  Mail,
+  Lock
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { auth, db } from './lib/firebase';
-import { 
-  GoogleAuthProvider, 
-  signInWithPopup, 
-  signOut, 
-  onAuthStateChanged,
-  type User 
-} from 'firebase/auth';
+import { useAuth } from './auth/AuthContext';
 import { cn } from './lib/utils';
 import Dashboard from './components/Dashboard';
 import Inventory from './components/Inventory';
@@ -48,29 +43,58 @@ import Purchases from './components/Purchases';
 type Tab = 'dashboard' | 'inventory' | 'transactions' | 'suppliers' | 'customers' | 'dealers' | 'locations' | 'transfers' | 'sales' | 'purchases';
 
 export default function App() {
-  const [user, setUser] = useState<User | null>(null);
+  const { user, loading, logout, loginWithGoogle, loginWithEmail } = useAuth();
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const [loading, setLoading] = useState(true);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [rememberMe, setRememberMe] = useState(false);
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (u) => {
-      setUser(u);
-      setLoading(false);
-    });
-    return () => unsubscribe();
+    const savedEmail = localStorage.getItem('rememberedEmail');
+    if (savedEmail) {
+      setEmail(savedEmail);
+      setRememberMe(true);
+    }
   }, []);
 
   const handleLogin = async () => {
-    const provider = new GoogleAuthProvider();
     try {
-      await signInWithPopup(auth, provider);
+      await loginWithGoogle();
     } catch (error) {
       console.error("Login failed:", error);
     }
   };
 
-  const handleLogout = () => signOut(auth);
+  const handleEmailLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoginError(null);
+    try {
+      // This calls the function in AuthContext.tsx
+      await loginWithEmail(email, password);
+      if (rememberMe) {
+        localStorage.setItem('rememberedEmail', email);
+      } else {
+        localStorage.removeItem('rememberedEmail');
+      }
+    } catch (error: any) {
+      console.error(error);
+
+      switch (error.code) {
+        case "auth/invalid-credential":
+          setLoginError("Invalid email or password.");
+          break;
+
+        case "auth/configuration-not-found":
+          setLoginError("Firebase Authentication is not configured for this project.");
+          break;
+
+        default:
+          setLoginError(error.message);
+      }
+    }
+  };
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
@@ -122,12 +146,71 @@ export default function App() {
               <h1 className="text-3xl font-bold tracking-tight text-neutral-900 italic font-serif">SmartPhone Pro</h1>
               <p className="text-neutral-500">Shop Management System</p>
             </div>
+
+            <form onSubmit={handleEmailLogin} className="w-full space-y-4">
+              <div className="space-y-1.5 text-left">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Email Address</label>
+                <div className="relative">
+                  <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input 
+                    type="email" 
+                    placeholder="pichethneou@gmail.com"
+                    className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:bg-white focus:border-blue-500 outline-none transition-all"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5 text-left">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Password</label>
+                <div className="relative">
+                  <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                  <input 
+                    type="password" 
+                    placeholder="........"
+                    className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-sm focus:bg-white focus:border-blue-500 outline-none transition-all"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    required
+                  />
+                </div>
+              </div>
+
+            <div className="w-full flex items-center px-1">
+              <label className="flex items-center gap-2 cursor-pointer group">
+                <input 
+                  type="checkbox" 
+                  className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500/20 transition-all cursor-pointer"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                />
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest group-hover:text-slate-500 transition-colors">Remember Me</span>
+              </label>
+            </div>
+
+              {loginError && <p className="text-xs text-red-500 font-medium">{loginError}</p>}
+
+              <button
+                type="submit"
+                className="w-full flex items-center justify-center bg-blue-600 text-white py-4 px-6 rounded-2xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-200 active:scale-[0.98]"
+              >
+                Sign In
+              </button>
+            </form>
+
+            <div className="w-full flex items-center gap-3 py-2">
+              <div className="h-px bg-slate-100 flex-1" />
+              <span className="text-[10px] font-bold text-slate-300 uppercase">OR</span>
+              <div className="h-px bg-slate-100 flex-1" />
+            </div>
+
             <button
               onClick={handleLogin}
-              className="w-full flex items-center justify-center gap-3 bg-neutral-900 text-white py-4 px-6 rounded-2xl font-semibold hover:bg-neutral-800 transition-all active:scale-[0.98]"
+              className="w-full flex items-center justify-center gap-3 bg-white border border-slate-200 text-slate-600 py-3 px-6 rounded-2xl font-semibold hover:bg-slate-50 transition-all active:scale-[0.98]"
             >
-              <img src="https://www.google.com/favicon.ico" alt="Google" className="w-5 h-5 rounded-full" />
-              Sign in with Google
+              <img src="https://www.google.com/favicon.ico" alt="Google" className="w-4 h-4" />
+              Continue with Google
             </button>
             <p className="text-xs text-neutral-400">Restricted to authorized staff only.</p>
           </div>
@@ -174,17 +257,17 @@ export default function App() {
           <div className={cn("flex flex-col gap-2", !isSidebarOpen && "items-center")}>
             <div className={cn("flex items-center gap-3 p-2 rounded-lg bg-slate-800/50", !isSidebarOpen && "bg-transparent")}>
               <div className="w-9 h-9 rounded-full bg-blue-500/20 border border-blue-500/50 flex items-center justify-center text-blue-400 overflow-hidden flex-shrink-0">
-                <img src={user.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${user.displayName}`} alt="avatar" />
+                <img src={user.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${user.displayName || user.email || 'User'}`} alt="avatar" />
               </div>
               {isSidebarOpen && (
                 <div className="flex-1 min-w-0">
-                  <p className="text-xs font-medium text-white truncate">{user.displayName}</p>
+                  <p className="text-xs font-medium text-white truncate">{user.displayName || user.email?.split('@')[0]}</p>
                   <p className="text-[10px] text-slate-500 truncate">Manager @KY VIP</p>
                 </div>
               )}
             </div>
             <button 
-              onClick={handleLogout}
+              onClick={logout}
               className={cn(
                 "flex items-center gap-3 px-4 py-2 rounded-lg text-slate-400 hover:bg-red-500/10 hover:text-red-400 transition-colors w-full group",
                 !isSidebarOpen && "justify-center"
