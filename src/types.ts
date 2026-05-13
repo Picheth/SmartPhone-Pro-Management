@@ -5,12 +5,21 @@ export interface Variation {
   color: string;
   countryCode: string;
   condition: string;
+  processor?: string;
+  ram?: string;
 }
 
 export interface Product {
+  productId?: string;
   sku?: string;
   type?: string;
   brand?: string;
+  category?: string;
+  subCategory?: string;
+  destinationLocation?: string;
+  model?: string;
+  shortModel?: string;
+  displaySize?: string; // Added for Tablets and Laptops
   id: string;
   name: string;
   variations: Variation[];

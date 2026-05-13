@@ -24,7 +24,8 @@ import {
   ShoppingBag,
   ShoppingBasket,
   Mail,
-  Lock
+  Lock,
+  Settings
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from './auth/AuthContext';
@@ -39,8 +40,9 @@ import Locations from './components/Locations';
 import StockTransfers from './components/StockTransfers';
 import Sales from './components/Sales';
 import Purchases from './components/Purchases';
+import UserSettings from './components/UserSettings';
 
-type Tab = 'dashboard' | 'inventory' | 'transactions' | 'suppliers' | 'customers' | 'dealers' | 'locations' | 'transfers' | 'sales' | 'purchases';
+type Tab = 'dashboard' | 'inventory' | 'transactions' | 'suppliers' | 'customers' | 'dealers' | 'locations' | 'transfers' | 'sales' | 'purchases' | 'settings';
 
 export default function App() {
   const { user, loading, logout, loginWithGoogle, loginWithEmail } = useAuth();
@@ -107,6 +109,7 @@ export default function App() {
     { id: 'suppliers', label: 'Suppliers', icon: UserCircle },
     { id: 'customers', label: 'Customers', icon: Users },
     { id: 'dealers', label: 'Dealers', icon: Briefcase },
+    { id: 'settings', label: 'User Settings', icon: Settings },
   ];
 
   useEffect(() => {
@@ -300,7 +303,7 @@ export default function App() {
           <div className="flex items-center gap-4">
              <div className="hidden sm:flex items-center gap-2 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-md text-sm text-slate-600 font-medium">
                 <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                Location: KY VIP
+                គ្នាយើង | KneaYerng
              </div>
           </div>
         </header>
@@ -326,6 +329,7 @@ export default function App() {
               {activeTab === 'transfers' && <StockTransfers staffName={user.displayName || 'Unknown Staff'} />}
               {activeTab === 'sales' && <Sales />}
               {activeTab === 'purchases' && <Purchases />}
+              {activeTab === 'settings' && <UserSettings />}
             </motion.div>
           </AnimatePresence>
         </div>

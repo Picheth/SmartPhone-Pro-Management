@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { collection, onSnapshot, addDoc, serverTimestamp, setDoc, doc, updateDoc, deleteDoc, writeBatch, runTransaction, query, where, orderBy, getDocs, limit } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
-import { iphoneSpecs as iphoneModelSpecs } from '../../iphoneSpecs';
+import { productSpecs as productModelSpecs } from '../../productSpecs';
 import { Product, Variation, Stock, Location, Transaction } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
@@ -44,46 +44,40 @@ type ProductModelSpec = {
   model: string;
   productId?: string;
   name?: string;
+  category?: string;
+  subCategory?: string;
+  shortModel?: string;
+  processor?: string[];
+  ram?: string[];
+  displaySize?: string;
+  processorCodes?: { [key: string]: string };
+  ramCodes?: { [key: string]: string };
+  storageCodes?: { [key: string]: string };
+  colorCodes?: { [key: string]: string };
+  regionCodes?: { [key: string]: string };
+  conditionCodes?: { [key: string]: string };
 };
 
-const iphoneSpecs: ProductModelSpec[] = iphoneModelSpecs;
-
-const tabletSpecs: ProductModelSpec[] = [
-  { brand: 'Apple', model: 'iPad Pro M4' },
-  { brand: 'Apple', model: 'iPad Air M2' },
-  { brand: 'Samsung', model: 'Galaxy Tab S10 Ultra' },
-];
-
-const laptopSpecs: ProductModelSpec[] = [
-  { brand: 'Apple', model: 'MacBook Pro M3' },
-  { brand: 'Apple', model: 'MacBook Air M2' },
-  { brand: 'Dell', model: 'XPS 15' },
-  { brand: 'ASUS', model: 'ROG Zephyrus G16' },
-];
-
-const watchSpecs: ProductModelSpec[] = [
-  { brand: 'Apple', model: 'Apple Watch Ultra 2' },
-  { brand: 'Samsung', model: 'Galaxy Watch 7' },
-];
+const allProductSpecs: ProductModelSpec[] = productModelSpecs;
 
 const productModelTypes = ['Mobile Phone', 'Tablet', 'Laptop', 'PC', 'PC / Desktop', 'Smart Watch', 'Smartwatch', 'Accessory', 'Repair Parts', 'Material'];
 
 const getModelSpecsForType = (type: string): ProductModelSpec[] | undefined => {
   switch (type) {
     case 'Mobile Phone':
-      return iphoneSpecs;
+      return allProductSpecs.filter(s => s.category === 'Phone' || !s.category);
     case 'Tablet':
-      return tabletSpecs;
+      return allProductSpecs.filter(s => s.category === 'Tablet');
     case 'Laptop':
-      return laptopSpecs;
+      return allProductSpecs.filter(s => s.category === 'Laptop');
     case 'Smart Watch':
     case 'Smartwatch':
-      return watchSpecs;
+      return allProductSpecs.filter(s => s.category === 'Smartwatch');
     case 'PC':
     case 'PC / Desktop':
       return [];
     case 'Accessory':
-      return [];
+      return allProductSpecs.filter(s => s.category === 'Accessory');
     case 'Repair Parts':
       return [];
     case 'Material':
@@ -91,6 +85,39 @@ const getModelSpecsForType = (type: string): ProductModelSpec[] | undefined => {
     default:
       return undefined;
   }
+};
+
+const getRegionNameFromCode = (spec: ProductModelSpec, countryCode: string) => {
+  if (!countryCode) return '';
+  const region = Object.entries(spec.regionCodes || {}).find(([, code]) => code === countryCode)?.[0];
+  return region || countryCode;
+};
+
+const buildProductId = (spec: ProductModelSpec, variation?: Partial<Variation>) => {
+  const shortModel = spec.shortModel || spec.productId || '';
+  const displaySizeCode = (spec.category === 'Tablet' || spec.category === 'Laptop') && spec.displaySize
+    ? spec.displaySize.replace(/-inch/g, '') // e.g., "13-inch" becomes "13"
+    : '';
+  const procCode = variation?.processor ? spec.processorCodes?.[variation.processor] || variation.processor?.replace(/\s+/g, '') : '';
+  const ramCode = variation?.ram ? spec.ramCodes?.[variation.ram] || variation.ram.replace(/GB|TB/g, '') : '';
+  const storageCode = variation?.storage ? spec.storageCodes?.[variation.storage] || variation.storage.replace(/GB|TB/g, '') : '';
+  const colorCode = variation?.color ? spec.colorCodes?.[variation.color] || variation.color.split(/\s+/).map(word => word[0]).join('').toUpperCase() : '';
+  return [shortModel, displaySizeCode, procCode, ramCode, storageCode, colorCode].filter(Boolean).join('-');
+};
+
+const buildProductName = (spec: ProductModelSpec, variation?: Partial<Variation>) => {
+  const procCode = variation?.processor ? spec.processorCodes?.[variation.processor] || variation.processor.replace(/\s+/g, '') : '';
+  const ramCode = variation?.ram ? spec.ramCodes?.[variation.ram] || variation.ram.replace(/GB|TB/g, '') : '';
+
+  return [
+    spec.model,
+    procCode,
+    ramCode,
+    variation?.storage,
+    variation?.color,
+    variation?.countryCode ? getRegionNameFromCode(spec, variation.countryCode) : '',
+    variation?.condition,
+  ].filter(Boolean).join(' ');
 };
 
 export default function Inventory() {
@@ -135,6 +162,14 @@ export default function Inventory() {
   const [productForm, setProductForm] = useState({
     name: '',
     type: 'Mobile Phone',
+    brand: '',
+    productId: '',
+    category: '',
+    subCategory: '',
+    destinationLocation: '',
+    model: '',
+    shortModel: '',
+    displaySize: '', // Initialize displaySize
     sku: '',
     variations: [] as (Variation & { initialQty?: string, error?: string })[]
   });
@@ -148,8 +183,16 @@ export default function Inventory() {
     const spec = productOptions.find(option => option.model === model);
     setProductForm({
       ...productForm,
-      name: model,
-      sku: spec?.productId || '',
+      name: spec ? buildProductName(spec) : model,
+      brand: spec?.brand || productForm.brand,
+      productId: spec ? buildProductId(spec) : '',
+      category: spec?.category || '',
+      subCategory: spec?.subCategory || '',
+      destinationLocation: productForm.destinationLocation,
+      model,
+      shortModel: spec?.shortModel || '',
+      displaySize: spec?.displaySize || '', // Update displaySize when model changes
+      sku: '',
     });
   };
 
@@ -186,8 +229,8 @@ export default function Inventory() {
 
   const updateVariation = (id: string, field: string, value: string) => {
     setProductForm(prev => ({
-      ...prev,
-      variations: prev.variations.map(v => {
+      ...(() => {
+        const variations = prev.variations.map(v => {
         if (v.id === id) {
           const updated = { ...v, [field]: value };
           
@@ -203,18 +246,50 @@ export default function Inventory() {
           return updated;
         }
         return v;
-      })
+        });
+        const spec = productModelSpecs.find(s => s.model === prev.model || s.model === prev.name);
+        const activeVariation = variations.find(v => v.id === id) || variations[0];
+        const autoFields = spec ? {
+          productId: buildProductId(spec, activeVariation),
+          brand: spec.brand,
+          category: spec.category,
+          subCategory: spec.subCategory,
+          model: spec.model,
+          shortModel: spec.shortModel,
+        } : {};
+        const newName = spec ? buildProductName(spec, activeVariation) : prev.name;
+
+        return {
+          ...prev,
+          ...autoFields,
+          name: newName,
+          variations,
+        };
+      })()
     }));
   };
 
   const openAddMode = () => {
-    setProductForm({ name: '', type: 'Mobile Phone', sku: '', variations: [] });
+    setProductForm({ name: '', type: 'Mobile Phone', brand: '', productId: '', category: '', subCategory: '', destinationLocation: '', model: '', shortModel: '', sku: '', displaySize: '', variations: [] });
     setEditingProduct(null);
     setIsAddingMode(true);
   };
 
   const openEditMode = (product: Product) => {
-    setProductForm({ name: product.name, type: product.type || 'Mobile Phone', sku: product.sku || '', variations: [...product.variations] });
+    setProductForm({
+      name: product.name,
+      type: product.type || 'Mobile Phone',
+      brand: product.brand || '',
+      productId: product.productId || '',
+      category: product.category || '',
+      subCategory: product.subCategory || '',
+      destinationLocation: product.destinationLocation || '',
+      model: product.model || product.name,
+      shortModel: product.shortModel || '',
+      displaySize: product.displaySize || '', // Populate displaySize from existing product
+      sku: product.sku || '',
+      variations: [...product.variations],
+    });
     setEditingProduct(product);
     setIsAddingMode(true);
   };
@@ -233,6 +308,19 @@ export default function Inventory() {
       return;
     }
 
+    // Add validation for mandatory fields
+    if (!productForm.model.trim()) {
+      alert("Product model is required.");
+      return;
+    }
+    if (!productForm.brand.trim()) {
+      alert("Product brand is required.");
+      return;
+    }
+
+    const spec = productOptions.find(option => option.model === productForm.model);
+    const displaySizeToSave = (spec && (spec.category === 'Tablet' || spec.category === 'Laptop')) ? spec.displaySize : undefined;
+
     try {
       let productId = editingProduct?.id;
       
@@ -240,16 +328,32 @@ export default function Inventory() {
 
       if (editingProduct) {
         await updateDoc(doc(db, 'products', editingProduct.id), {
+          productId: productForm.productId,
           name: trimmedName,
+          brand: productForm.brand.trim(),
+          category: productForm.category,
+          subCategory: productForm.subCategory,
+          destinationLocation: productForm.destinationLocation.trim(),
+          model: productForm.model || trimmedName,
+          shortModel: productForm.shortModel,
           sku: productForm.sku,
+          displaySize: displaySizeToSave, // Add displaySize here
           type: productForm.type,
           variations: cleanVariations,
           updatedAt: serverTimestamp()
         });
       } else {
         const docRef = await addDoc(collection(db, 'products'), {
+          productId: productForm.productId,
           name: trimmedName,
+          brand: productForm.brand.trim(),
+          category: productForm.category,
+          subCategory: productForm.subCategory,
+          destinationLocation: productForm.destinationLocation.trim(),
+          model: productForm.model || trimmedName,
+          shortModel: productForm.shortModel,
           sku: productForm.sku,
+          displaySize: displaySizeToSave, // Add displaySize here
           type: productForm.type,
           variations: cleanVariations,
           createdAt: serverTimestamp()
@@ -283,7 +387,7 @@ export default function Inventory() {
         if (hasStockUpdates) await batch.commit();
       }
 
-      setProductForm({ name: '', type: 'Mobile Phone', sku: '', variations: [] });
+      setProductForm({ name: '', type: 'Mobile Phone', brand: '', productId: '', category: '', subCategory: '', destinationLocation: '', model: '', shortModel: '', displaySize: '', sku: '', variations: [] });
       setEditingProduct(null);
       setIsAddingMode(false);
     } catch (error) {
@@ -789,7 +893,7 @@ export default function Inventory() {
                     {productOptions.length > 0 ? (
                       <select 
                         className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:border-blue-500 outline-none transition-all"
-                        value={productForm.name}
+                        value={productForm.model || productForm.name}
                         onChange={(e) => handleProductNameChange(e.target.value)}
                       >
                         <option value="">Choose a model...</option>
@@ -803,7 +907,7 @@ export default function Inventory() {
                         placeholder="e.g. AirPods Pro 2"
                         className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:border-blue-500 outline-none transition-all"
                         value={productForm.name}
-                        onChange={(e) => setProductForm({ ...productForm, name: e.target.value })}
+                        onChange={(e) => setProductForm({ ...productForm, name: e.target.value, model: e.target.value })}
                       />
                     )}
                   </div>
@@ -812,15 +916,50 @@ export default function Inventory() {
                     <select 
                       className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:border-blue-500 outline-none transition-all"
                       value={productForm.type}
-                      onChange={(e) => setProductForm({ ...productForm, type: e.target.value, name: '', sku: '' })}
+                      onChange={(e) => setProductForm({ ...productForm, type: e.target.value, name: '', brand: '', productId: '', category: '', subCategory: '', destinationLocation: '', model: '', shortModel: '', sku: '' })}
                     >
                       {PRODUCT_TYPES.map(type => (
                         <option key={type} value={type}>{type}</option>
                       ))}
                     </select>
                   </div>
-                </div>
 
+                  <div className="md:col-span-2 space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Brand</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. Apple"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:border-blue-500 outline-none transition-all"
+                      value={productForm.brand || ''}
+                      onChange={(e) => setProductForm({ ...productForm, brand: e.target.value })}
+                    />
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Destination Location</label>
+                    <select 
+                       className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-500 font-medium"
+                       value={productForm.destinationLocation}
+                       onChange={e => setProductForm({ ...productForm, destinationLocation: e.target.value })}
+                    >
+                       <option value="">Select Location...</option>
+                       {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">ProductID (AutoSync)</label>
+                    <input
+                      type="text"
+                      readOnly
+                      placeholder="IP15PM-256-BT"
+                      className="w-full px-4 py-2.5 bg-slate-100 border border-slate-200 rounded-lg text-sm text-slate-500 outline-none font-mono"
+                      value={productForm.productId}
+                    />
+                  </div>
+                  {productForm.displaySize && (productForm.category === 'Tablet' || productForm.category === 'Laptop') && (
+                    <div className="space-y-1.5">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Display Size</label>
+                      <input type="text" readOnly className="w-full px-4 py-2.5 bg-slate-100 border border-slate-200 rounded-lg text-sm text-slate-500 outline-none" value={productForm.displaySize} />
+                    </div>
+                  )}
+                  </div>
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Variations & Specs</label>
@@ -835,9 +974,9 @@ export default function Inventory() {
 
                   <div className="space-y-3">
                     {productForm.variations.map((v) => (
-                      <div key={v.id} className="grid grid-cols-2 md:grid-cols-6 gap-3 p-4 bg-slate-50 rounded-xl border border-slate-200 relative group">
+                      <div key={v.id} className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 p-4 bg-slate-50 rounded-xl border border-slate-200 relative group">
                         {(() => {
-                          const spec = iphoneModelSpecs.find(s => s.model === productForm.name);
+                          const spec = productModelSpecs.find(s => s.model === productForm.model || s.model === productForm.name);
                           return (
                             <>
                               <div className="space-y-1">
@@ -848,6 +987,30 @@ export default function Inventory() {
                                   value={v.sku} onChange={(e) => updateVariation(v.id, 'sku', e.target.value)}
                                 />
                               </div>
+                              {spec?.ram && (
+                                <div className="space-y-1">
+                                  <label className="text-[9px] text-slate-400 font-bold uppercase pl-0.5">RAM</label>
+                                  <select 
+                                    className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-blue-500"
+                                    value={v.ram || ''} onChange={(e) => updateVariation(v.id, 'ram', e.target.value)}
+                                  >
+                                    <option value="">Select...</option>
+                                    {spec.ram.map(r => <option key={r} value={r}>{r}</option>)}
+                                  </select>
+                                </div>
+                              )}
+                              {spec?.processor && (
+                                <div className="space-y-1">
+                                  <label className="text-[9px] text-slate-400 font-bold uppercase pl-0.5">Processor</label>
+                                  <select 
+                                    className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-blue-500"
+                                    value={v.processor || ''} onChange={(e) => updateVariation(v.id, 'processor', e.target.value)}
+                                  >
+                                    <option value="">Select...</option>
+                                    {spec.processor.map(p => <option key={p} value={p}>{p}</option>)}
+                                  </select>
+                                </div>
+                              )}
                               <div className="space-y-1">
                                 <label className="text-[9px] text-slate-400 font-bold uppercase pl-0.5">Storage</label>
                                 {spec ? (
@@ -1009,6 +1172,11 @@ export default function Inventory() {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-slate-800 tracking-tight">{product.name}</h3>
+                  {product.displaySize && (product.category === 'Tablet' || product.category === 'Laptop') && (
+                    <span className="ml-2 px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full text-[10px] font-semibold">
+                      {product.displaySize}
+                    </span>
+                  )}
                   <p className="text-[10px] text-slate-400 font-mono">UID: {product.id.slice(0, 12)}</p>
                 </div>
               </div>
@@ -1081,6 +1249,8 @@ export default function Inventory() {
                       <div className="space-y-0.5">
                         <div className="flex flex-wrap gap-1">
                           {v.sku && <span className="px-1.5 py-0.5 bg-blue-600 text-white rounded text-[8px] font-black uppercase tracking-tighter shadow-sm">{v.sku}</span>}
+                          {v.processor && <span className="px-1.5 py-0.5 bg-slate-100 rounded text-[9px] border border-slate-200 font-bold text-blue-600">{v.processor}</span>}
+                          {v.ram && <span className="px-1.5 py-0.5 bg-slate-100 rounded text-[9px] border border-slate-200 font-bold text-blue-600">{v.ram}</span>}
                           <span className="px-1.5 py-0.5 bg-slate-100 rounded text-[9px] border border-slate-200 font-bold text-slate-500">{v.storage}</span>
                           <span className="px-1.5 py-0.5 bg-slate-100 rounded text-[9px] border border-slate-200 font-bold text-slate-500">{v.countryCode}</span>
                         </div>
