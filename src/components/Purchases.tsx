@@ -43,6 +43,8 @@ export default function Purchases() {
   const [search, setSearch] = useState('');
   const [purchaseStatusFilter, setPurchaseStatusFilter] = useState<string>('all');
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>('all');
+  const [startDate, setStartDate] = useState<string>('');
+  const [endDate, setEndDate] = useState<string>('');
   const [isAdding, setIsAdding] = useState(false);
   const [isAddingOrder, setIsAddingOrder] = useState(false);
   const [isSaving, setIsSaving] = useState(false);

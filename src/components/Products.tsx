@@ -277,9 +277,9 @@ export default function Inventory() {
 
   const openEditMode = (product: Product) => {
     setProductForm({
+      brand: product.brand || '',
       name: product.name,
       type: product.type || 'Mobile Phone',
-      brand: product.brand || '',
       productId: product.productId || '',
       category: product.category || '',
       subCategory: product.subCategory || '',
@@ -302,6 +302,11 @@ export default function Inventory() {
       alert("Product name is too long (Max 200 characters).");
       return;
     }
+    
+    if (!productForm.brand.trim()) {
+      alert("Product brand is required.");
+      return;
+    }
 
     if (productForm.variations.some(v => v.error)) {
       alert("Please fix validation errors before saving.");
@@ -311,10 +316,6 @@ export default function Inventory() {
     // Add validation for mandatory fields
     if (!productForm.model.trim()) {
       alert("Product model is required.");
-      return;
-    }
-    if (!productForm.brand.trim()) {
-      alert("Product brand is required.");
       return;
     }
 
@@ -883,7 +884,14 @@ export default function Inventory() {
                   <X className="w-5 h-5" />
                 </button>
               </div>
-
+              <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Brand</label>
+                    <input 
+                      type="text" 
+                      placeholder="e.g. Apple"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:border-blue-500 outline-none transition-all"
+                      value={productForm.brand || ''}
+                      onChange={(e) => setProductForm({ ...productForm, brand: e.target.value })}
+                    />
               <div className="space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
                   <div className="md:col-span-2 space-y-1.5">
@@ -925,14 +933,7 @@ export default function Inventory() {
                   </div>
 
                   <div className="md:col-span-2 space-y-1.5">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Brand</label>
-                    <input 
-                      type="text" 
-                      placeholder="e.g. Apple"
-                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:bg-white focus:border-blue-500 outline-none transition-all"
-                      value={productForm.brand || ''}
-                      onChange={(e) => setProductForm({ ...productForm, brand: e.target.value })}
-                    />
+                    
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">Destination Location</label>
                     <select 
                        className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm outline-none focus:border-blue-500 font-medium"

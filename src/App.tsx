@@ -31,7 +31,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from './auth/AuthContext';
 import { cn } from './lib/utils';
 import Dashboard from './components/Dashboard';
-import Inventory from './components/Inventory';
+import Products from './components/Products';
 import Transactions from './components/Transactions';
 import Suppliers from './components/Suppliers';
 import Customers from './components/Customers';
@@ -42,7 +42,7 @@ import Sales from './components/Sales';
 import Purchases from './components/Purchases';
 import UserSettings from './components/UserSettings';
 
-type Tab = 'dashboard' | 'inventory' | 'transactions' | 'suppliers' | 'customers' | 'dealers' | 'locations' | 'transfers' | 'sales' | 'purchases' | 'settings';
+type Tab = 'dashboard' | 'Products' | 'transactions' | 'suppliers' | 'customers' | 'dealers' | 'locations' | 'transfers' | 'sales' | 'purchases' | 'settings';
 
 export default function App() {
   const { user, loading, logout, loginWithGoogle, loginWithEmail } = useAuth();
@@ -100,11 +100,11 @@ export default function App() {
 
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-    { id: 'inventory', label: 'Inventory', icon: Package },
-    { id: 'sales', label: 'Sales History', icon: ShoppingBag },
+    { id: 'Products', label: 'Products', icon: Package },
     { id: 'purchases', label: 'Purchases', icon: ShoppingBasket },
+    { id: 'sales', label: 'Sales', icon: ShoppingBag },
     { id: 'transfers', label: 'Transfers', icon: Truck },
-    { id: 'locations', label: 'Warehouse', icon: MapPin },
+    { id: 'locations', label: 'Locations', icon: MapPin },
     { id: 'transactions', label: 'Register', icon: ArrowLeftRight },
     { id: 'suppliers', label: 'Suppliers', icon: UserCircle },
     { id: 'customers', label: 'Customers', icon: Users },
@@ -146,9 +146,14 @@ export default function App() {
               <Smartphone className="w-8 h-8 text-white" />
             </div>
             <div className="space-y-2">
-              <h1 className="text-3xl font-bold tracking-tight text-neutral-900 italic font-serif">SmartPhone Pro</h1>
-              <p className="text-neutral-500">Shop Management System</p>
-            </div>
+  <h1 className="text-4xl font-black tracking-tight text-slate-900 font-sans">
+    SmartPhone Pro
+  </h1>
+
+  <p className="text-sm tracking-[0.2em] uppercase text-slate-500 font-medium">
+    Mobile & Electronics Management System
+  </p>
+</div>
 
             <form onSubmit={handleEmailLogin} className="w-full space-y-4">
               <div className="space-y-1.5 text-left">
@@ -320,7 +325,7 @@ export default function App() {
               className="max-w-7xl mx-auto"
             >
               {activeTab === 'dashboard' && <Dashboard />}
-              {activeTab === 'inventory' && <Inventory />}
+              {activeTab === 'Products' && <Products />}
               {activeTab === 'transactions' && <Transactions staffName={user.displayName || 'Unknown Staff'} />}
               {activeTab === 'suppliers' && <Suppliers />}
               {activeTab === 'customers' && <Customers />}
