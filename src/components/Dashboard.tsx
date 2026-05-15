@@ -704,7 +704,7 @@ export default function Dashboard() {
                   <tspan x="50%" dy="1.4em" className="fill-slate-900 font-black text-lg">${stats.totalSales.toLocaleString(undefined, { maximumFractionDigits: 0 })}</tspan>
                 </text>
                 <Tooltip 
-                  formatter={(value: number) => [`$${value.toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 'Revenue']}
+                  formatter={(value: any) => [`$${Number(value).toLocaleString(undefined, { minimumFractionDigits: 2 })}`, 'Revenue']}
                   contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }}
                 />
                 <Legend verticalAlign="bottom" align="center" iconType="circle" wrapperStyle={{ fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '0.05em' }} />
