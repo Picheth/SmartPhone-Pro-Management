@@ -324,41 +324,30 @@ export default function Inventory() {
 
     try {
       let productId = editingProduct?.id;
-      
       const cleanVariations = productForm.variations.map(({ initialQty, error, ...rest }) => rest);
 
+      // Build product data object, only include displaySize if defined
+      const productData: any = {
+        productId: productForm.productId,
+        name: trimmedName,
+        brand: productForm.brand.trim(),
+        category: productForm.category,
+        subCategory: productForm.subCategory,
+        destinationLocation: productForm.destinationLocation.trim(),
+        model: productForm.model || trimmedName,
+        shortModel: productForm.shortModel,
+        sku: productForm.sku,
+        type: productForm.type,
+        variations: cleanVariations,
+        ...(editingProduct ? { updatedAt: serverTimestamp() } : { createdAt: serverTimestamp() })
+      };
+      if (displaySizeToSave !== undefined) {
+        productData.displaySize = displaySizeToSave;
+      }
       if (editingProduct) {
-        await updateDoc(doc(db, 'products', editingProduct.id), {
-          productId: productForm.productId,
-          name: trimmedName,
-          brand: productForm.brand.trim(),
-          category: productForm.category,
-          subCategory: productForm.subCategory,
-          destinationLocation: productForm.destinationLocation.trim(),
-          model: productForm.model || trimmedName,
-          shortModel: productForm.shortModel,
-          sku: productForm.sku,
-          displaySize: displaySizeToSave, // Add displaySize here
-          type: productForm.type,
-          variations: cleanVariations,
-          updatedAt: serverTimestamp()
-        });
+        await updateDoc(doc(db, 'products', editingProduct.id), productData);
       } else {
-        const docRef = await addDoc(collection(db, 'products'), {
-          productId: productForm.productId,
-          name: trimmedName,
-          brand: productForm.brand.trim(),
-          category: productForm.category,
-          subCategory: productForm.subCategory,
-          destinationLocation: productForm.destinationLocation.trim(),
-          model: productForm.model || trimmedName,
-          shortModel: productForm.shortModel,
-          sku: productForm.sku,
-          displaySize: displaySizeToSave, // Add displaySize here
-          type: productForm.type,
-          variations: cleanVariations,
-          createdAt: serverTimestamp()
-        });
+        const docRef = await addDoc(collection(db, 'products'), productData);
         productId = docRef.id;
       }
 
