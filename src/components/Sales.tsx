@@ -253,7 +253,7 @@ export default function Sales() {
       s.staffName.toLowerCase().includes(search.toLowerCase());
     
     const matchesPaymentStatus = paymentStatusFilter === 'all' || s.paymentStatus === paymentStatusFilter;
-    const matchesLocation = locationFilter === 'all' || s.locationId === locationFilter;
+    const matchesLocation = locationFilter === 'all' || s.locationId === locationFilter; // Already exists
     const matchesStaff = staffFilter === 'all' || s.staffName === staffFilter;
     const matchesProduct = productFilter === 'all' || s.items.some(item => item.productName === productFilter);
     

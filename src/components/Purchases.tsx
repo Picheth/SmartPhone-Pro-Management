@@ -43,6 +43,7 @@ export default function Purchases() {
   const [search, setSearch] = useState('');
   const [purchaseStatusFilter, setPurchaseStatusFilter] = useState<string>('all');
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<string>('all');
+  const [locationFilter, setLocationFilter] = useState<string>('all');
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [isAdding, setIsAdding] = useState(false);
@@ -354,9 +355,61 @@ export default function Purchases() {
     
     const matchesPurchaseStatus = purchaseStatusFilter === 'all' || p.purchaseStatus === purchaseStatusFilter;
     const matchesPaymentStatus = paymentStatusFilter === 'all' || p.paymentStatus === paymentStatusFilter;
+    const matchesLocation = locationFilter === 'all' || p.locationId === locationFilter;
 
-    return matchesSearch && matchesPurchaseStatus && matchesPaymentStatus;
+    let matchesDate = true;
+    if (startDate || endDate) {
+      const purchaseDate = new Date(p.date || (p.timestamp?.seconds ? p.timestamp.seconds * 1000 : 0));
+      if (startDate && purchaseDate < new Date(startDate)) matchesDate = false;
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        if (purchaseDate > end) matchesDate = false;
+      }
+    }
+
+    return matchesSearch && matchesPurchaseStatus && matchesPaymentStatus && matchesLocation && matchesDate;
   });
+
+  const exportToCSV = () => {
+    const headers = [
+      'Purchase ID', 'Reference No', 'Date', 'Supplier', 'Supplier Type', 
+      'Location', 'Items', 'Total Cost', 'Purchase Status', 'Payment Status', 
+      'Payment Method', 'Staff Name'
+    ];
+    const rows = filteredPurchases.map(p => {
+      const location = locations.find(l => l.id === p.locationId)?.name || 'N/A';
+      const itemsList = p.items.map(item => 
+        `${item.quantity}x ${products.find(prod => prod.id === item.productId)?.name || 'Unknown Product'} (${item.price?.toLocaleString() || '0'})`
+      ).join('; ');
+      
+      return [
+        p.id,
+        p.referenceNo || 'N/A',
+        p.date || (p.timestamp?.seconds ? new Date(p.timestamp.seconds * 1000).toLocaleDateString() : 'N/A'),
+        p.partnerName || 'N/A',
+        p.partnerType || 'N/A',
+        location,
+        itemsList,
+        p.total?.toLocaleString() || '0',
+        p.purchaseStatus || 'N/A',
+        p.paymentStatus || 'N/A',
+        p.paymentMethod || 'N/A',
+        p.staffName
+      ].map(field => `"${String(field).replace(/"/g, '""')}"`).join(',');
+    });
+
+    const csvContent = [headers.join(','), ...rows].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `Purchases_Report_${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   return (
     <div className="space-y-8">
@@ -388,8 +441,42 @@ export default function Purchases() {
             Create PO
           </button>
         </div>
-        <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+        <div className="flex flex-col xl:flex-row items-center gap-3 w-full md:w-auto">
+          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+             <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-lg px-2 shadow-sm">
+                <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                <input 
+                  type="date" 
+                  className="py-1.5 text-[10px] font-bold uppercase outline-none bg-transparent"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                />
+                <span className="text-slate-300">-</span>
+                <input 
+                  type="date" 
+                  className="py-1.5 text-[10px] font-bold uppercase outline-none bg-transparent"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                />
+             </div>
+
+             <select 
+               className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-[10px] font-bold uppercase tracking-wider focus:border-blue-500 outline-none transition-all shadow-sm"
+               value={locationFilter}
+               onChange={(e) => setLocationFilter(e.target.value)}
+             >
+               <option value="all">All Locations</option>
+               {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+             </select>
+
+             <button 
+                onClick={exportToCSV}
+                className="px-4 py-2 bg-slate-800 text-white rounded-lg text-[10px] font-black uppercase tracking-widest hover:bg-slate-700 transition-all flex items-center gap-2 shadow-lg shadow-slate-800/10"
+             >
+                <Save className="w-3.5 h-3.5" />
+                Export CSV
+             </button>
+
             <select 
               className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-[10px] font-bold uppercase tracking-wider focus:border-blue-500 outline-none transition-all shadow-sm"
               value={purchaseStatusFilter}
