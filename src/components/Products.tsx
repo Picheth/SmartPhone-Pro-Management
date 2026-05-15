@@ -8,6 +8,8 @@ import {
   Smartphone,
   Box,
   MapPin,
+  Package,
+  ShoppingBasket,
   Save,
   X,
   PlusCircle,
@@ -19,7 +21,8 @@ import {
   History,
   TrendingUp,
   TrendingDown,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Tag
 } from 'lucide-react';
 import { collection, onSnapshot, addDoc, serverTimestamp, setDoc, doc, updateDoc, deleteDoc, writeBatch, runTransaction, query, where, orderBy, getDocs, limit } from 'firebase/firestore';
 import { db, handleFirestoreError, OperationType } from '../lib/firebase';
@@ -148,6 +151,13 @@ export default function Inventory() {
     variationLabel: '',
     variationId: ''
   });
+  const [bulkStockLocationId, setBulkStockLocationId] = useState('');
+  const [showBulkStockModal, setShowBulkStockModal] = useState(false);
+  const [bulkStockQuantity, setBulkStockQuantity] = useState('');
+  const [isUpdatingBulkStock, setIsUpdatingBulkStock] = useState(false);
+  const [showBulkPriceModal, setShowBulkPriceModal] = useState(false);
+  const [bulkPriceValue, setBulkPriceValue] = useState('');
+  const [isUpdatingBulkPrice, setIsUpdatingBulkPrice] = useState(false);
   const [addStockForm, setAddStockForm] = useState({
     productId: '',
     variationId: '',
@@ -171,7 +181,7 @@ export default function Inventory() {
     shortModel: '',
     displaySize: '', // Initialize displaySize
     sku: '',
-    variations: [] as (Variation & { initialQty?: string, error?: string })[]
+    variations: [] as (Variation & { initialQty?: string, price?: string, error?: string })[]
   });
 
   const [isBulkImportOpen, setIsBulkImportOpen] = useState(false);
@@ -216,7 +226,7 @@ export default function Inventory() {
     const id = Math.random().toString(36).substr(2, 9);
     setProductForm(prev => ({
       ...prev,
-      variations: [...prev.variations, { id, sku: '', storage: '', color: '', countryCode: '', condition: '', initialQty: '0' }]
+      variations: [...prev.variations, { id, sku: '', storage: '', color: '', countryCode: '', condition: '', initialQty: '0', price: '0' }]
     }));
   };
 
@@ -238,6 +248,14 @@ export default function Inventory() {
           if (field === 'initialQty') {
             if (value !== "" && !/^\d+$/.test(value)) {
               updated.error = 'Quantity must be a non-negative integer';
+            } else {
+              delete updated.error;
+            }
+          }
+          
+          if (field === 'price') {
+            if (value !== "" && !/^\d+(\.\d+)?$/.test(value)) {
+              updated.error = 'Price must be a valid number';
             } else {
               delete updated.error;
             }
@@ -296,7 +314,15 @@ export default function Inventory() {
 
   const saveProduct = async () => {
     const trimmedName = productForm.name.trim();
-    if (!trimmedName) return;
+    if (!trimmedName) {
+      alert("Product name is required.");
+      return;
+    }
+
+    if (!productForm.type) {
+      alert("Please select a product category type.");
+      return;
+    }
 
     if (trimmedName.length > 200) {
       alert("Product name is too long (Max 200 characters).");
@@ -316,6 +342,13 @@ export default function Inventory() {
     // Add validation for mandatory fields
     if (!productForm.model.trim()) {
       alert("Product model is required.");
+      return;
+    }
+
+    // Validate that a location is selected if initial stock is being added
+    const hasInitialStock = productForm.variations.some(v => parseInt(v.initialQty || '0') > 0);
+    if (hasInitialStock && !productForm.destinationLocation) {
+      alert("Please select a Destination Location to record your initial stock levels.");
       return;
     }
 
@@ -355,16 +388,17 @@ export default function Inventory() {
       if (locations.length > 0 && productId) {
         const batch = writeBatch(db);
         let hasStockUpdates = false;
+        // Use selected destination or fallback to the first available location
+        const targetLocationId = productForm.destinationLocation || locations[0].id;
 
         productForm.variations.forEach(v => {
           const qty = parseInt(v.initialQty || '0');
           if (qty > 0) {
-            // Initialize in the first location by default for simplicity, 
-            // or we could add a location selector but let's stick to the common location
-            const stockDocId = `${locations[0].id}_${v.id}`;
+            // FIX: Use the target location instead of hardcoded locations[0]
+            const stockDocId = `${targetLocationId}_${v.id}`;
             const stockRef = doc(db, 'stock', stockDocId);
             batch.set(stockRef, {
-              locationId: locations[0].id,
+              locationId: targetLocationId,
               variationId: v.id,
               productId: productId,
               quantity: qty,
@@ -391,8 +425,13 @@ export default function Inventory() {
     const nameMatch = p.name.toLowerCase().includes(s);
     const typeMatch = !filters.type || p.type === filters.type;
 
+    // If no search query and no specific variation filters, show the product
+    if (!s && !filters.sku && !filters.storage && !filters.color && !filters.countryCode && !filters.condition) {
+      return typeMatch;
+    }
+
     // Check if any variation matches the specific filters AND the search query
-    const hasMatchingVariation = p.variations.some(v => {
+    const hasMatchingVariation = p.variations.length === 0 ? nameMatch : p.variations.some(v => {
       const matchesSearch = !s || 
         v.sku?.toLowerCase().includes(s) ||
         v.storage.toLowerCase().includes(s) ||
@@ -477,6 +516,110 @@ export default function Inventory() {
       setSelectedItems([]);
     } catch (error) {
       console.error("Bulk delete failed:", error);
+    }
+  };
+
+  const handleBulkPriceUpdate = async () => {
+    if (!bulkPriceValue || isNaN(parseFloat(bulkPriceValue))) {
+      alert("Please enter a valid price.");
+      return;
+    }
+
+    setIsUpdatingBulkPrice(true);
+    try {
+      const batch = writeBatch(db);
+      
+      // Group selections by product
+      const grouped = selectedItems.reduce((acc, item) => {
+        if (!acc[item.productId]) acc[item.productId] = [];
+        acc[item.productId].push(item.variationId);
+        return acc;
+      }, {} as Record<string, string[]>);
+
+      for (const [productId, ids] of Object.entries(grouped)) {
+        const varIds = ids as string[];
+        const product = products.find(p => p.id === productId);
+        if (product) {
+          const updatedVariations = product.variations.map(v => 
+            varIds.includes(v.id) ? { ...v, price: bulkPriceValue } : v
+          );
+          batch.update(doc(db, 'products', productId), {
+            variations: updatedVariations,
+            updatedAt: serverTimestamp()
+          });
+        }
+      }
+
+      await batch.commit();
+      setSelectedItems([]);
+      setShowBulkPriceModal(false);
+      setBulkPriceValue('');
+      setBulkStockLocationId(''); // Clear location on close
+    } catch (error) {
+      console.error("Bulk price update failed:", error);
+      alert("Failed to update prices.");
+    } finally {
+      setIsUpdatingBulkPrice(false);
+    }
+  };
+
+  const handleBulkStockUpdate = async () => {
+    const qtyChange = parseInt(bulkStockQuantity);
+    if (isNaN(qtyChange) || bulkStockQuantity === '') {
+      alert("Please enter a valid quantity to adjust stock.");
+      return;
+    }
+    if (!bulkStockLocationId) {
+      alert("Please select a location for the bulk stock adjustment.");
+      return;
+    }
+
+
+    if (!window.confirm(`Are you sure you want to adjust stock by ${qtyChange} for ${selectedItems.length} selected variations?`)) {
+      return;
+    }
+
+    setIsUpdatingBulkStock(true);
+    try {
+      await runTransaction(db, async (transaction) => {
+        const stockUpdates: Map<string, { productId: string, variationId: string, locationId: string, currentQty: number }> = new Map();
+
+        // First, get all relevant stock documents
+        for (const item of selectedItems) {
+          const stockDocId = `${bulkStockLocationId}_${item.variationId}`;
+          const stockRef = doc(db, 'stock', stockDocId);
+
+          const stockSnap = await transaction.get(stockRef);
+
+          stockUpdates.set(stockDocId, {
+            productId: item.productId,
+            variationId: item.variationId,
+          locationId: bulkStockLocationId,
+            currentQty: stockSnap.exists() ? stockSnap.data().quantity : 0
+          }); 
+        }
+
+        // Then, apply updates
+        for (const [stockDocId, data] of stockUpdates.entries()) {
+          const stockRef = doc(db, 'stock', stockDocId);
+          transaction.set(stockRef, {
+            locationId: data.locationId,
+            variationId: data.variationId, // Ensure variationId is passed
+            productId: data.productId,
+            quantity: data.currentQty + qtyChange,
+            lastUpdated: serverTimestamp()
+          }, { merge: true });
+        }
+      });
+      setSelectedItems([]);
+      setShowBulkStockModal(false);
+      setBulkStockQuantity('');
+      setBulkStockLocationId(''); // Clear location on close
+    } catch (error) {
+      console.error("Bulk stock update failed:", error);
+      alert(error instanceof Error ? error.message : "Failed to update stock.");
+    } finally {
+      setIsUpdatingBulkStock(false);
     }
   };
 
@@ -964,7 +1107,7 @@ export default function Inventory() {
 
                   <div className="space-y-3">
                     {productForm.variations.map((v) => (
-                      <div key={v.id} className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-3 p-4 bg-slate-50 rounded-xl border border-slate-200 relative group">
+                      <div key={v.id} className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-10 gap-3 p-4 bg-slate-50 rounded-xl border border-slate-200 relative group">
                         {(() => {
                           const spec = productModelSpecs.find(s => s.model === productForm.model || s.model === productForm.name);
                           return (
@@ -1080,6 +1223,14 @@ export default function Inventory() {
                             </>
                           );
                         })()}
+                        <div className="space-y-1">
+                          <label className="text-[9px] text-slate-400 font-bold uppercase pl-0.5">Price</label>
+                          <input 
+                            placeholder="0" 
+                            className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-blue-500 font-mono font-bold text-emerald-600"
+                            value={v.price || ''} onChange={(e) => updateVariation(v.id, 'price', e.target.value)}
+                          />
+                        </div>
                         <div className="space-y-1">
                           <label className="text-[9px] text-slate-400 font-bold uppercase pl-0.5">Initial Qty</label>
                           <div className="relative">
@@ -1248,12 +1399,34 @@ export default function Inventory() {
                       </div>
                       <div className={cn(
                         "px-3 py-1 rounded-lg text-sm font-black border tabular-nums flex items-center gap-2 group/stock",
+                        totalStock < 0 ? "bg-red-50 text-red-600 border-red-500 animate-pulse" :
                         totalStock > 5 ? "bg-white text-blue-600 border-blue-200 shadow-sm" : 
                         totalStock > 0 ? "bg-amber-50 text-amber-600 border-amber-200" :
                         "bg-slate-50 text-slate-300 border-slate-200"
                       )}>
+                        {totalStock < 0 && <AlertCircle className="w-3.5 h-3.5" />}
                         {totalStock}
                         <div className="flex items-center gap-1">
+                          {totalStock < 0 && (
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                window.dispatchEvent(new CustomEvent('switch-tab', { 
+                                  detail: { 
+                                    tab: 'transactions', 
+                                    type: 'PURCHASE',
+                                    productId: product.id,
+                                    variationId: v.id,
+                                    suggestedQty: Math.abs(totalStock)
+                                  } 
+                                }));
+                              }}
+                              className="p-0.5 hover:bg-red-100 rounded transition-all text-red-600"
+                              title="Quick Restock (Purchase Order)"
+                            >
+                              <ShoppingBasket className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
@@ -1298,6 +1471,7 @@ export default function Inventory() {
                              </div>
                              <span className={cn(
                                "font-bold tabular-nums",
+                               locStock < 0 ? "text-red-500" :
                                locStock > 0 ? "text-slate-900" : "text-slate-200"
                              )}>{locStock}</span>
                            </div>
@@ -1350,6 +1524,20 @@ export default function Inventory() {
                   Clear
                 </button>
                 <button 
+                  onClick={() => setShowBulkStockModal(true)}
+                  className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-sm active:scale-95"
+                >
+                  <Package className="w-4 h-4" />
+                  Adjust Stock
+                </button>
+                <button 
+                  onClick={() => setShowBulkPriceModal(true)}
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-sm active:scale-95"
+                >
+                  <Tag className="w-4 h-4" />
+                  Set Price
+                </button>
+                <button 
                   onClick={handleBulkDelete}
                   className="bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-sm active:scale-95"
                 >
@@ -1359,6 +1547,167 @@ export default function Inventory() {
               </div>
             </div>
           </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showBulkPriceModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200"
+            >
+              <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-emerald-50/30">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center shadow-lg shadow-emerald-200">
+                    <Tag className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-slate-800 tracking-tight">Bulk Price Update</h3>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Update price for {selectedItems.length} items</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowBulkPriceModal(false)} className="p-2 hover:bg-white rounded-full transition-colors">
+                  <X className="w-5 h-5 text-slate-400" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-6">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">New Unit Price ($)</label>
+                  <div className="relative">
+                    <input 
+                      type="text"
+                      placeholder="0.00"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-lg font-black outline-none transition-all tabular-nums text-emerald-600 focus:border-emerald-500"
+                      value={bulkPriceValue}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === "" || /^\d+(\.\d+)?$/.test(val)) {
+                          setBulkPriceValue(val);
+                        }
+                      }}
+                      autoFocus
+                    />
+                  </div>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button 
+                    onClick={() => setShowBulkPriceModal(false)}
+                    className="flex-1 px-6 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={handleBulkPriceUpdate}
+                    disabled={isUpdatingBulkPrice}
+                    className="flex-[2] bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3 rounded-xl font-black shadow-lg shadow-emerald-600/20 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:bg-slate-400"
+                  >
+                    {isUpdatingBulkPrice ? (
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4" />
+                        Update Prices
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showBulkStockModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm">
+            <motion.div 
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200"
+            >
+              <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-blue-50/30">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center shadow-lg shadow-blue-200">
+                    <Package className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <h3 className="font-black text-slate-800 tracking-tight">Bulk Stock Adjustment</h3>
+                    <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Adjust stock for {selectedItems.length} items</p>
+                  </div>
+                </div>
+                <button onClick={() => setShowBulkStockModal(false)} className="p-2 hover:bg-white rounded-full transition-colors">
+                  <X className="w-5 h-5 text-slate-400" />
+                </button>
+              </div>
+
+              <div className="p-6 space-y-6">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Target Location</label>
+                  <select 
+                    className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-lg font-black outline-none transition-all text-blue-600 focus:border-blue-500"
+                    value={bulkStockLocationId}
+                    onChange={(e) => setBulkStockLocationId(e.target.value)}
+                  >
+                    <option value="">Select Location...</option>
+                    {locations.map(loc => (
+                      <option key={loc.id} value={loc.id}>{loc.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest pl-1">Quantity to Add/Subtract</label>
+                  <div className="relative">
+                    <input 
+                      type="text"
+                      placeholder="e.g., 5 (add 5) or -3 (subtract 3)"
+                      className="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-lg font-black outline-none transition-all tabular-nums text-blue-600 focus:border-blue-500"
+                      value={bulkStockQuantity}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === "" || /^-?\d+$/.test(val)) { // Allow negative numbers
+                          setBulkStockQuantity(val);
+                        }
+                      }}
+                      autoFocus
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-500 font-medium mt-1 pl-1">
+                    Enter a positive number to add stock, or a negative number to subtract. This will apply to the selected location.
+                  </p>
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button 
+                    onClick={() => setShowBulkStockModal(false)}
+                    className="flex-1 px-6 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition-all"
+                  >
+                    Cancel
+                  </button>
+                  <button 
+                    onClick={handleBulkStockUpdate} // Ensure this is called
+                    disabled={isUpdatingBulkStock || bulkStockQuantity === '' || !bulkStockLocationId}
+                    className="flex-[2] bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-xl font-black shadow-lg shadow-blue-600/20 active:scale-95 transition-all flex items-center justify-center gap-2 disabled:bg-slate-400"
+                  >
+                    {isUpdatingBulkStock ? (
+                      <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    ) : (
+                      <>
+                        <Save className="w-4 h-4" />
+                        Adjust Stock
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </motion.div>
+          </div>
         )}
       </AnimatePresence>
 

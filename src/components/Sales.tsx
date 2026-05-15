@@ -46,6 +46,7 @@ export default function Sales() {
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
   const [isAdding, setIsAdding] = useState(false);
+  const [allowOverselling, setAllowOverselling] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
 
   // Form State
@@ -67,6 +68,10 @@ export default function Sales() {
       orderBy('timestamp', 'desc'), 
       limit(50)
     );
+
+    const unsubSettings = onSnapshot(doc(db, "settings", "inventory"), (snap) => {
+      if (snap.exists()) setAllowOverselling(snap.data().allowOverselling);
+    });
 
     const unsubSales = onSnapshot(q, (s) => {
       setSales(s.docs.map(d => ({ id: d.id, ...d.data() } as Transaction)));
@@ -104,6 +109,7 @@ export default function Sales() {
       unsubProducts();
       unsubCustomers();
       unsubDealers();
+      unsubSettings();
     };
   }, []);
 
@@ -202,15 +208,25 @@ export default function Sales() {
 
           if (stockSnap.exists()) {
              const currentQty = stockSnap.data().quantity;
-             if (currentQty < change.quantity) {
-                throw new Error(`Insufficient stock for variation: ${change.variationId}`);
+             if (!allowOverselling && currentQty < change.quantity) {
+                throw new Error(`Insufficient stock for variation: ${change.variationId}. Current stock: ${currentQty}`);
              }
              transaction.update(change.ref, {
                 quantity: currentQty - change.quantity,
                 lastUpdated: serverTimestamp()
              });
           } else {
-             throw new Error("Cannot sell item from a location where it does not exist in inventory.");
+             if (!allowOverselling) {
+                throw new Error("Cannot sell item: No stock record found and overselling is disabled.");
+             }
+             // Create the stock record with a negative value if it doesn't exist and overselling is on
+             transaction.set(change.ref, {
+                locationId: form.locationId,
+                productId: change.productId,
+                variationId: change.variationId,
+                quantity: -change.quantity,
+                lastUpdated: serverTimestamp()
+             });
           }
         }
       });

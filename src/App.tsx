@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, 
   Package, 
@@ -41,6 +41,8 @@ import StockTransfers from './components/StockTransfers';
 import Sales from './components/Sales';
 import Purchases from './components/Purchases';
 import UserSettings from './components/UserSettings';
+import { collection, onSnapshot, doc } from 'firebase/firestore';
+import { db } from './lib/firebase';
 
 type Tab = 'dashboard' | 'Products' | 'transactions' | 'suppliers' | 'customers' | 'dealers' | 'locations' | 'transfers' | 'sales' | 'purchases' | 'settings';
 
@@ -52,6 +54,12 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [allUsers, setAllUsers] = useState<any[]>([]); // To fetch user roles
+
+  // Determine if the current logged-in user is an Admin
+  const isAdmin = useMemo(() => {
+    return allUsers.find((u) => u.email === user?.email)?.role === "Admin";
+  }, [allUsers, user]);
 
   useEffect(() => {
     const savedEmail = localStorage.getItem('rememberedEmail');
@@ -59,6 +67,13 @@ export default function App() {
       setEmail(savedEmail);
       setRememberMe(true);
     }
+
+    // Listen for all users to determine roles
+    const unsubUsers = onSnapshot(collection(db, "users"), (snapshot) => {
+      setAllUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
+    return () => unsubUsers();
   }, []);
 
   const handleLogin = async () => {
@@ -109,7 +124,7 @@ export default function App() {
     { id: 'suppliers', label: 'Suppliers', icon: UserCircle },
     { id: 'customers', label: 'Customers', icon: Users },
     { id: 'dealers', label: 'Dealers', icon: Briefcase },
-    { id: 'settings', label: 'User Settings', icon: Settings },
+    ...(isAdmin ? [{ id: 'settings', label: 'User Settings', icon: Settings }] : []),
   ];
 
   useEffect(() => {

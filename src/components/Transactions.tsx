@@ -42,6 +42,7 @@ export default function Transactions({ staffName }: { staffName: string }) {
   const [partners, setPartners] = useState<{ id: string, name: string, type: string, code: string }[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [isAdding, setIsAdding] = useState(false);
+  const [allowOverselling, setAllowOverselling] = useState(false);
   const [txType, setTxType] = useState<TransactionType>('SALE');
   
   // Transaction Form
@@ -61,12 +62,30 @@ export default function Transactions({ staffName }: { staffName: string }) {
   useEffect(() => {
     const handleSwitch = (e: any) => {
       if (e.detail.type) {
-        setTxType(e.detail.type);
-        setForm(f => ({ ...f, referenceNo: `REF-${Math.random().toString(36).substr(2, 6).toUpperCase()}` }));
+        const { type, productId, variationId, suggestedQty } = e.detail;
+        setTxType(type);
+        setForm(f => ({ 
+          ...f, 
+          referenceNo: `REF-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
+          items: productId && variationId ? [
+            { 
+              productId, 
+              variationId, 
+              quantity: suggestedQty || 1, 
+              price: 0, 
+              tax: 0, 
+              warranty: '1 Year' 
+            }
+          ] : []
+        }));
         setIsAdding(true);
       }
     };
     window.addEventListener('switch-tab', handleSwitch);
+
+    const unsubSettings = onSnapshot(doc(db, "settings", "inventory"), (snap) => {
+      if (snap.exists()) setAllowOverselling(snap.data().allowOverselling);
+    });
     
     const unsubProducts = onSnapshot(collection(db, 'products'), (s) => 
       setProducts(s.docs.map(d => ({ id: d.id, ...d.data() } as Product))),
@@ -108,6 +127,7 @@ export default function Transactions({ staffName }: { staffName: string }) {
       unsubDealers(); 
       unsubTx(); 
       unsubLocs(); 
+      unsubSettings();
     };
   }, []);
 
@@ -209,11 +229,11 @@ export default function Transactions({ staffName }: { staffName: string }) {
           }
 
           const newQty = currentQty + change.quantity;
-          
-          if (newQty < 0 && txType === 'SALE') {
-            throw new Error(`Insufficient stock for ${change.productId}`);
-          }
 
+          if (!allowOverselling && txType === 'SALE' && newQty < 0) {
+            throw new Error(`Insufficient stock for variation: ${change.variationId}`);
+          }
+          
           transaction.set(stockRef, {
             locationId: form.locationId,
             variationId: change.variationId,
