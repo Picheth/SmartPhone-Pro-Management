@@ -30,6 +30,7 @@ import { productSpecs as productModelSpecs } from '../../productSpecs';
 import { Product, Variation, Stock, Location, Transaction } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from '../lib/utils';
+import { useToast } from '../auth/ToastContext';
 
 const PRODUCT_TYPES = [
   "Mobile Phone",
@@ -127,6 +128,7 @@ export default function Inventory() {
   const [products, setProducts] = useState<Product[]>([]);
   const [stocks, setStocks] = useState<Stock[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
+  const { addToast } = useToast();
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState({
     sku: '',
@@ -315,40 +317,40 @@ export default function Inventory() {
   const saveProduct = async () => {
     const trimmedName = productForm.name.trim();
     if (!trimmedName) {
-      alert("Product name is required.");
+      addToast("Product name is required.", "error");
       return;
     }
 
     if (!productForm.type) {
-      alert("Please select a product category type.");
+      addToast("Please select a product category type.", "error");
       return;
     }
 
     if (trimmedName.length > 200) {
-      alert("Product name is too long (Max 200 characters).");
+      addToast("Product name is too long (Max 200 characters).", "error");
       return;
     }
     
     if (!productForm.brand.trim()) {
-      alert("Product brand is required.");
+      addToast("Product brand is required.", "error");
       return;
     }
 
     if (productForm.variations.some(v => v.error)) {
-      alert("Please fix validation errors before saving.");
+      addToast("Please fix validation errors before saving.", "error");
       return;
     }
 
     // Add validation for mandatory fields
     if (!productForm.model.trim()) {
-      alert("Product model is required.");
+      addToast("Product model is required.", "error");
       return;
     }
 
     // Validate that a location is selected if initial stock is being added
     const hasInitialStock = productForm.variations.some(v => parseInt(v.initialQty || '0') > 0);
     if (hasInitialStock && !productForm.destinationLocation) {
-      alert("Please select a Destination Location to record your initial stock levels.");
+      addToast("Please select a Destination Location to record your initial stock levels.", "warning");
       return;
     }
 
@@ -416,7 +418,7 @@ export default function Inventory() {
       setIsAddingMode(false);
     } catch (error) {
       console.error("Save failed:", error);
-      alert("Error saving product. Check your connection.");
+      addToast("Error saving product. Check your connection.", "error");
     }
   };
 
@@ -521,7 +523,7 @@ export default function Inventory() {
 
   const handleBulkPriceUpdate = async () => {
     if (!bulkPriceValue || isNaN(parseFloat(bulkPriceValue))) {
-      alert("Please enter a valid price.");
+      addToast("Please enter a valid price.", "error");
       return;
     }
 
@@ -557,7 +559,7 @@ export default function Inventory() {
       setBulkStockLocationId(''); // Clear location on close
     } catch (error) {
       console.error("Bulk price update failed:", error);
-      alert("Failed to update prices.");
+      addToast("Failed to update prices.", "error");
     } finally {
       setIsUpdatingBulkPrice(false);
     }
@@ -566,11 +568,11 @@ export default function Inventory() {
   const handleBulkStockUpdate = async () => {
     const qtyChange = parseInt(bulkStockQuantity);
     if (isNaN(qtyChange) || bulkStockQuantity === '') {
-      alert("Please enter a valid quantity to adjust stock.");
+      addToast("Please enter a valid quantity to adjust stock.", "error");
       return;
     }
     if (!bulkStockLocationId) {
-      alert("Please select a location for the bulk stock adjustment.");
+      addToast("Please select a location for the bulk stock adjustment.", "error");
       return;
     }
 
@@ -617,7 +619,7 @@ export default function Inventory() {
       setBulkStockLocationId(''); // Clear location on close
     } catch (error) {
       console.error("Bulk stock update failed:", error);
-      alert(error instanceof Error ? error.message : "Failed to update stock.");
+      addToast(error instanceof Error ? error.message : "Failed to update stock.", "error");
     } finally {
       setIsUpdatingBulkStock(false);
     }
@@ -626,11 +628,11 @@ export default function Inventory() {
   const handleQuickAddStock = async () => {
     const qty = parseInt(addStockForm.quantity);
     if (!addStockForm.locationId) {
-      alert("Please select a location.");
+      addToast("Please select a location.", "error");
       return;
     }
     if (isNaN(qty) || qty <= 0 || addStockForm.error) {
-      alert(addStockForm.error || "Please enter a valid positive quantity.");
+      addToast(addStockForm.error || "Please enter a valid positive quantity.", "error");
       return;
     }
 
@@ -661,7 +663,7 @@ export default function Inventory() {
       setAddStockForm(prev => ({ ...prev, quantity: '0' }));
     } catch (error) {
       console.error("Failed to add stock:", error);
-      alert("Error updating stock. Check your connection.");
+      addToast("Error updating stock. Check your connection.", "error");
     } finally {
       setIsUpdatingStock(false);
     }
@@ -700,7 +702,7 @@ export default function Inventory() {
       setHistoryItems(movements);
     } catch (error) {
       console.error("Failed to load history:", error);
-      alert("Could not load history. Check your connection.");
+      addToast("Could not load history. Check your connection.", "error");
     } finally {
       setIsLoadingHistory(false);
     }
@@ -895,12 +897,12 @@ export default function Inventory() {
                       }
                       
                       await batch.commit();
-                      alert("Import successful!");
+                      addToast("Import successful!", "success");
                       setIsBulkImportOpen(false);
                       setBulkInput('');
                     } catch (e) {
                       console.error(e);
-                      alert("Import failed. Check console.");
+                      addToast("Import failed. Check console.", "error");
                     } finally {
                       setIsUpdatingStock(false);
                     }

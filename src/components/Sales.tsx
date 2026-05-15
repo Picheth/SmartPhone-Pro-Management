@@ -32,6 +32,7 @@ import { db, handleFirestoreError, OperationType } from '../lib/firebase';
 import { Transaction, Location, Product, Partner } from '../types';
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
+import { useToast } from '../auth/ToastContext'; // Import useToast
 
 export default function Sales() {
   const [sales, setSales] = useState<Transaction[]>([]);
@@ -47,6 +48,7 @@ export default function Sales() {
   const [endDate, setEndDate] = useState<string>('');
   const [isAdding, setIsAdding] = useState(false);
   const [allowOverselling, setAllowOverselling] = useState(false);
+  const { addToast } = useToast(); // Initialize useToast
   const [isSaving, setIsSaving] = useState(false);
 
   // Form State
@@ -141,12 +143,12 @@ export default function Sales() {
 
   const handleSave = async () => {
     if (!form.locationId || !form.partnerId || !form.staffName.trim()) {
-      alert("Please fill out location, customer, and staff name.");
+      addToast("Please fill out location, customer, and staff name.", "error");
       return;
     }
 
     if (form.items.length === 0 || form.items.some(i => i.quantity <= 0 || !i.productId || !i.variationId)) {
-      alert("Please ensure all items have a selected variation and positive quantity.");
+      addToast("Please ensure all items have a selected variation and positive quantity.", "error");
       return;
     }
 
@@ -209,7 +211,7 @@ export default function Sales() {
           if (stockSnap.exists()) {
              const currentQty = stockSnap.data().quantity;
              if (!allowOverselling && currentQty < change.quantity) {
-                throw new Error(`Insufficient stock for variation: ${change.variationId}. Current stock: ${currentQty}`);
+                throw new Error(`Insufficient stock for variation: ${change.variationId}. Current stock: ${currentQty}. Overselling is disabled.`);
              }
              transaction.update(change.ref, {
                 quantity: currentQty - change.quantity,
@@ -217,7 +219,7 @@ export default function Sales() {
              });
           } else {
              if (!allowOverselling) {
-                throw new Error("Cannot sell item: No stock record found and overselling is disabled.");
+                throw new Error("Cannot sell item: No stock record found and overselling is disabled. Please add stock first.");
              }
              // Create the stock record with a negative value if it doesn't exist and overselling is on
              transaction.set(change.ref, {
@@ -238,9 +240,10 @@ export default function Sales() {
          items: [],
          staffName: ''
       });
+      addToast("Sale recorded successfully!", "success");
     } catch (e) {
       console.error(e);
-      alert(e instanceof Error ? e.message : "Transaction failed");
+      addToast(e instanceof Error ? e.message : "Transaction failed.", "error");
     } finally {
       setIsSaving(false);
     }
