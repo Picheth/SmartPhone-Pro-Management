@@ -17,6 +17,7 @@ import { collection, doc, onSnapshot, setDoc, deleteDoc, addDoc, serverTimestamp
 import { db } from "../lib/firebase";
 import { motion, AnimatePresence } from "motion/react";
 import { useAuth } from "../auth/AuthContext";
+import { useToast } from "../auth/ToastContext";
 
 interface User {
   id: string;
@@ -38,6 +39,7 @@ const roleColors: Record<string, string> = {
 
 const UserSettings: React.FC = () => {
   const { user: authUser } = useAuth();
+  const { addToast } = useToast();
   const [users, setUsers] = useState<User[]>([]);
   const [search, setSearch] = useState("");
   const [allowOverselling, setAllowOverselling] = useState(false);
@@ -75,9 +77,11 @@ const UserSettings: React.FC = () => {
   }, []);
 
   const toggleOverselling = async () => {
+    const newState = !allowOverselling;
     await setDoc(doc(db, "settings", "inventory"), {
-      allowOverselling: !allowOverselling
+      allowOverselling: newState
     }, { merge: true });
+    addToast(`Overselling is now ${newState ? 'enabled' : 'disabled'}.`, newState ? 'warning' : 'success');
   };
 
   const filteredUsers = users.filter(
@@ -90,7 +94,7 @@ const UserSettings: React.FC = () => {
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!userForm.name || !userForm.email) {
-      alert("Name and Email are required.");
+      addToast("Name and Email are required.", "error");
       return;
     }
 
@@ -103,9 +107,10 @@ const UserSettings: React.FC = () => {
       });
       setIsAddingUser(false);
       setUserForm({ name: "", email: "", branch: "Main Branch", role: "Sales" });
+      addToast(`${userForm.name} created successfully!`, "success");
     } catch (error) {
       console.error("Error adding user:", error);
-      alert("Failed to add user.");
+      addToast("Failed to add user.", "error");
     } finally {
       setIsSavingUser(false);
     }
@@ -135,9 +140,10 @@ const UserSettings: React.FC = () => {
       setIsEditingUser(false);
       setEditingUserId(null);
       setUserForm({ name: "", email: "", branch: "Main Branch", role: "Sales" });
+      addToast("User profile updated.", "success");
     } catch (error) {
       console.error("Error updating user:", error);
-      alert("Failed to update user.");
+      addToast("Failed to update user.", "error");
     } finally {
       setIsSavingUser(false);
     }
@@ -151,9 +157,10 @@ const UserSettings: React.FC = () => {
     if (confirmed) {
       try {
         await deleteDoc(doc(db, "users", id));
+        addToast("User deleted permanently.", "success");
       } catch (error) {
         console.error("Error deleting user:", error);
-        alert("Failed to delete user.");
+        addToast("Failed to delete user.", "error");
       }
     }
   };

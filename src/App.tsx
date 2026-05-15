@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from './auth/AuthContext';
+import { ToastProvider } from './auth/ToastContext';
 import { cn } from './lib/utils';
 import Dashboard from './components/Dashboard';
 import Products from './components/Products';
@@ -40,7 +41,7 @@ import Locations from './components/Locations';
 import StockTransfers from './components/StockTransfers';
 import Sales from './components/Sales';
 import Purchases from './components/Purchases';
-import UserSettings from './components/UserSettings';
+import UserSettings from './components/UserSettings.tsx';
 import { collection, onSnapshot, doc } from 'firebase/firestore';
 import { db } from './lib/firebase';
 
@@ -243,6 +244,7 @@ export default function App() {
   }
 
   return (
+    <ToastProvider>
     <div className="min-h-screen bg-slate-50 flex font-sans selection:bg-blue-100 selection:text-blue-900 text-slate-900 overflow-hidden">
       {/* Sidebar Navigation */}
       <aside 
@@ -355,5 +357,6 @@ export default function App() {
         </div>
       </main>
     </div>
+    </ToastProvider>
   );
 }
