@@ -50,6 +50,21 @@ export interface Supplier {
   parentCode?: string;
 }
 
+export type SupplierType = 'main' | 'used' | 'new' | 'other';
+
+export interface Supplier {
+  id: string;
+  supplierCode: string;
+  supplierName: string;
+  shortName: string;
+  parentSupplierCode?: string | null;
+  supplierType: SupplierType;
+  isMainSupplier: boolean;
+  phone?: string;
+  address?: string;
+  note?: string;
+  createdAt: string;
+}
 export interface Customer {
   id: string;
   code: string;

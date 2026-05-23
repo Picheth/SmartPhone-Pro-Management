@@ -1117,7 +1117,7 @@ export default function Inventory() {
                               <div className="space-y-1">
                                 <label className="text-[9px] text-slate-400 font-bold uppercase pl-0.5">SKU</label>
                                 <input 
-                                  placeholder="e.g. I15PM-256-TI" 
+                                  placeholder="e.g. 2700043-5" 
                                   className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-md outline-none focus:border-blue-500 font-mono"
                                   value={v.sku} onChange={(e) => updateVariation(v.id, 'sku', e.target.value)}
                                 />
