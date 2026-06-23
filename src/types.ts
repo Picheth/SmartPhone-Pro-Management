@@ -19,10 +19,10 @@ export interface Product {
   destinationLocation?: string;
   model?: string;
   shortModel?: string;
-  displaySize?: string; // Added for Tablets and Laptops
+  displaySize?: string;
   id: string;
   name: string;
-  variations: Variation[];
+  variations: Variation[]; // may be undefined in legacy Firestore docs — use (p.variations ?? [])
   createdAt: any;
 }
 
@@ -154,6 +154,80 @@ export interface PurchaseOrder {
   total: number;
   taxAmount: number;
   timestamp: any;
+}
+
+
+export interface RepairOrder {
+  id: string;
+  date: string;
+  referenceNo: string;
+  partnerId: string;
+  partnerName: string;
+  locationId: string;
+  items: Array<{
+    productId: string;
+    productName: string;
+    variationId: string;
+    quantity: number;
+    price: number;
+    tax: number;
+  }>;
+  staffName: string;
+  status: 'Draft' | 'Sent' | 'Cancelled';
+  total: number;
+  taxAmount: number;
+  timestamp: any;
+} 
+
+export interface RepairJob {
+  id: string;
+  date: string;
+  referenceNo: string;
+  partnerId: string;
+  partnerName: string;
+  locationId: string;
+  items: Array<{
+    productId: string;
+    productName: string;
+    variationId: string;
+    quantity: number;
+    price: number;
+    tax: number;
+  }>;
+  staffName: string;
+  status: 'Draft' | 'Sent' | 'Cancelled';
+  total: number;
+  taxAmount: number;
+  timestamp: any;
+}
+
+
+export interface JobSheet {
+  id: string;
+  date: string;
+  referenceNo: string;
+  partnerId: string;
+  partnerName: string;
+  locationId: string;
+  items: Array<{
+    productId: string;
+    productName: string;
+    variationId: string;
+    quantity: number;
+    price: number;
+    tax: number;
+  }>;
+  staffName: string;
+  status: 'Draft' | 'Sent' | 'Cancelled';
+  total: number;
+  taxAmount: number;
+  timestamp: any;
+}
+
+export interface Customer {
+  id: string;
+  code: string;
+  name: string;
 }
 
 // Locations are now dynamic, fetched from Firestore

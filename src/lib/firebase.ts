@@ -2,7 +2,7 @@ import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: "AIzaSyBKYkrd7sW1V3DeS5VsRPYr7nmjn7ODCEM",
   authDomain: "inventory-management-2652c.firebaseapp.com",
   projectId: "inventory-management-2652c",
@@ -49,6 +49,15 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   };
+
+  // Don't throw on permission-denied during sign-out — this is expected
+  const isPermissionDenied = error instanceof Error && error.message.includes('permission-denied');
+  const isSignedOut = !auth.currentUser;
+  if (isPermissionDenied && isSignedOut) {
+    console.warn('Firestore listener denied after sign-out (expected):', path);
+    return;
+  }
+
   console.error('Firestore Error: ', JSON.stringify(errInfo));
   throw new Error(JSON.stringify(errInfo));
 }

@@ -5,9 +5,16 @@ import {
   signOut, 
   signInWithPopup, 
   GoogleAuthProvider,
-  signInWithEmailAndPassword
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  updateProfile,
+  linkWithCredential,
+  EmailAuthProvider,
+  updatePassword
 } from 'firebase/auth';
-import { auth } from '../lib/firebase';
+
+import { auth, db } from '../lib/firebase';
+import { setDoc, doc, serverTimestamp } from 'firebase/firestore';
 
 interface AuthContextType {
   user: User | null;
@@ -35,12 +42,70 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   
   const loginWithGoogle = useCallback(async () => {
     const provider = new GoogleAuthProvider();
-    await signInWithPopup(auth, provider);
+    const result = await signInWithPopup(auth, provider);
+    const user = result.user;
+    
+    if (user && user.email?.toLowerCase() === 'pichethneou@gmail.com') {
+      const hasPasswordProvider = user.providerData.some(p => p.providerId === 'password');
+      if (!hasPasswordProvider) {
+        try {
+          console.log("Linking email/password provider with Admin@123...");
+          const credential = EmailAuthProvider.credential(user.email, 'Admin@123');
+          await linkWithCredential(user, credential);
+          console.log("Successfully linked email/password provider.");
+        } catch (linkError) {
+          console.error("Failed to link email/password provider:", linkError);
+        }
+      } else {
+        try {
+          console.log("Setting/Updating password to Admin@123...");
+          await updatePassword(user, 'Admin@123');
+          console.log("Successfully set/updated password.");
+        } catch (passError) {
+          console.error("Failed to update password:", passError);
+        }
+      }
+    }
   }, []);
 
   const loginWithEmail = useCallback(async (email: string, password: string) => {
     // This is the line that performs the authentication
-    await signInWithEmailAndPassword(auth, email, password);
+    try {
+      await signInWithEmailAndPassword(auth, email, password);
+    } catch (error: any) {
+      // Auto-create master admin if it doesn't exist yet
+      if (
+        email.toLowerCase() === 'pichethneou@gmail.com' &&
+        password === 'Admin@123' &&
+        error.code === 'auth/invalid-credential'
+      ) {
+        try {
+          console.log("Master admin credentials matched. Auto-registering master admin...");
+          const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+          const user = userCredential.user;
+          
+          // Update profile
+          await updateProfile(user, { displayName: 'picheth' });
+          
+          // Add to users collection
+          await setDoc(doc(db, 'users', user.uid), {
+            name: 'picheth',
+            email,
+            role: 'Admin',
+            status: 'Offline',
+            createdAt: serverTimestamp()
+          });
+          return; // Login succeeded via creation
+        } catch (signUpError: any) {
+          console.error("Auto-registration of master admin failed:", signUpError);
+          if (signUpError.code === 'auth/email-already-in-use') {
+            throw new Error("This master admin email is already registered via Google. Please sign in using 'Continue with Google' once to link/sync your password.");
+          }
+        }
+      }
+      console.error("Login failed:", error.message || error);
+      throw error;
+    } 
   }, []);
 
   return (

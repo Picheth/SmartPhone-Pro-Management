@@ -76,6 +76,7 @@ export default function Dashboard() {
   }, []);
 
   useEffect(() => {
+    // Fetch recent transactions (single-field orderBy, no composite index needed)
     const unsubTransactions = onSnapshot(
       query(collection(db, 'transactions'), orderBy('timestamp', 'desc'), limit(5)),
       (snapshot) => {
@@ -85,56 +86,18 @@ export default function Dashboard() {
       (error) => handleFirestoreError(error, OperationType.GET, 'transactions')
     );
 
-    const now = new Date();
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfYear = new Date(now.getFullYear(), 0, 1);
-
-    const unsubMonthlySales = onSnapshot(
-      query(
-        collection(db, 'transactions'), 
-        where('type', '==', 'SALE'),
-        where('timestamp', '>=', startOfMonth)
-      ),
-      (snapshot) => {
-        const total = snapshot.docs.reduce((acc, doc) => acc + (doc.data().total || 0), 0);
-        setStats(prev => ({ ...prev, monthlySales: total }));
-      },
-      (error) => handleFirestoreError(error, OperationType.GET, 'transactions')
-    );
-
-    const unsubTotalSales = onSnapshot(
+    // Fetch ALL sales with a single-field where (no composite index needed)
+    // Monthly and yearly aggregations are computed client-side
+    const unsubAllSales = onSnapshot(
       query(
         collection(db, 'transactions'), 
         where('type', '==', 'SALE')
       ),
       (snapshot) => {
         const txs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transaction));
-        const total = txs.reduce((acc, doc) => acc + (doc.total || 0), 0);
-        setStats(prev => ({ ...prev, totalSales: total }));
+        const total = txs.reduce((acc, tx) => acc + (tx.total || 0), 0);
         setAllSales(txs);
-      },
-      (error) => handleFirestoreError(error, OperationType.GET, 'transactions')
-    );
-
-    const unsubYearlySales = onSnapshot(
-      query(
-        collection(db, 'transactions'), 
-        where('type', '==', 'SALE'),
-        where('timestamp', '>=', startOfYear)
-      ),
-      (snapshot) => {
-        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-        const salesByMonth = months.map(name => ({ name, total: 0 }));
-        
-        snapshot.docs.forEach(doc => {
-          const data = doc.data();
-          const ts = data.timestamp;
-          if (ts) {
-            const date = ts.toDate ? ts.toDate() : new Date(ts.seconds * 1000);
-            salesByMonth[date.getMonth()].total += (data.total || 0);
-          }
-        });
-        setStats(prev => ({ ...prev, yearlySales: salesByMonth }));
+        setStats(prev => ({ ...prev, totalSales: total }));
       },
       (error) => handleFirestoreError(error, OperationType.GET, 'transactions')
     );
@@ -158,15 +121,39 @@ export default function Dashboard() {
 
     return () => {
       unsubTransactions();
+      unsubAllSales();
       unsubProducts();
-      unsubMonthlySales();
-      unsubTotalSales();
-      unsubYearlySales();
       unsubStock();
       unsubSuppliers();
       unsubLocs();
     };
   }, []);
+
+  // Compute monthly and yearly sales client-side from allSales (avoids composite index)
+  useEffect(() => {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfYear = new Date(now.getFullYear(), 0, 1);
+
+    let monthlySales = 0;
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const salesByMonth = months.map(name => ({ name, total: 0 }));
+
+    allSales.forEach(tx => {
+      const ts = (tx as any).timestamp;
+      if (ts) {
+        const date = ts.toDate ? ts.toDate() : (ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts));
+        if (date >= startOfMonth) {
+          monthlySales += (tx.total || 0);
+        }
+        if (date >= startOfYear) {
+          salesByMonth[date.getMonth()].total += (tx.total || 0);
+        }
+      }
+    });
+
+    setStats(prev => ({ ...prev, monthlySales, yearlySales: salesByMonth }));
+  }, [allSales]);
 
   // Recalculate stats when products or stocks change
   useEffect(() => {

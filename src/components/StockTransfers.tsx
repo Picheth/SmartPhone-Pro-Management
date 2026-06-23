@@ -324,7 +324,7 @@ export default function StockTransfers({ staffName }: { staffName: string }) {
                                 onChange={e => updateItem(idx, 'variationId', e.target.value)}
                               >
                                  <option value="">Select Variation</option>
-                                 {products.find(p => p.id === item.productId)?.variations.map(v => (
+                                 {(products.find(p => p.id === item.productId)?.variations ?? []).map(v => (
                                    <option key={v.id} value={v.id}>{v.storage} {v.color} {v.countryCode}</option>
                                  ))}
                               </select>
@@ -407,7 +407,7 @@ export default function StockTransfers({ staffName }: { staffName: string }) {
                         <div className="space-y-1.5 max-w-xs">
                            {tf.items.map((item, idx) => {
                              const product = products.find(p => p.id === item.productId);
-                             const variation = product?.variations.find(v => v.id === item.variationId);
+                             const variation = (product?.variations ?? []).find(v => v.id === item.variationId);
                              return (
                                <div key={idx} className="flex flex-col">
                                  <div className="flex items-center justify-between">

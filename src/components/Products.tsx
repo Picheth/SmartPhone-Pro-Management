@@ -308,7 +308,7 @@ export default function Inventory() {
       shortModel: product.shortModel || '',
       displaySize: product.displaySize || '', // Populate displaySize from existing product
       sku: product.sku || '',
-      variations: [...product.variations],
+      variations: [...(product.variations ?? [])],
     });
     setEditingProduct(product);
     setIsAddingMode(true);
@@ -426,6 +426,7 @@ export default function Inventory() {
     const s = search.toLowerCase();
     const nameMatch = p.name.toLowerCase().includes(s);
     const typeMatch = !filters.type || p.type === filters.type;
+    const variations = p.variations ?? [];
 
     // If no search query and no specific variation filters, show the product
     if (!s && !filters.sku && !filters.storage && !filters.color && !filters.countryCode && !filters.condition) {
@@ -433,7 +434,7 @@ export default function Inventory() {
     }
 
     // Check if any variation matches the specific filters AND the search query
-    const hasMatchingVariation = p.variations.length === 0 ? nameMatch : p.variations.some(v => {
+    const hasMatchingVariation = variations.length === 0 ? nameMatch : variations.some(v => {
       const matchesSearch = !s || 
         v.sku?.toLowerCase().includes(s) ||
         v.storage.toLowerCase().includes(s) ||
@@ -457,11 +458,11 @@ export default function Inventory() {
 
   // Get unique values for filters
   const uniqueValues = {
-    skus: Array.from(new Set(products.flatMap(p => p.variations.map(v => v.sku)))).filter(Boolean).sort(),
-    storages: Array.from(new Set(products.flatMap(p => p.variations.map(v => v.storage)))).filter(Boolean).sort(),
-    colors: Array.from(new Set(products.flatMap(p => p.variations.map(v => v.color)))).filter(Boolean).sort(),
-    countries: Array.from(new Set(products.flatMap(p => p.variations.map(v => v.countryCode)))).filter(Boolean).sort(),
-    conditions: Array.from(new Set(products.flatMap(p => p.variations.map(v => v.condition)))).filter(Boolean).sort()
+    skus: Array.from(new Set(products.flatMap(p => (p.variations ?? []).map(v => v.sku)))).filter(Boolean).sort(),
+    storages: Array.from(new Set(products.flatMap(p => (p.variations ?? []).map(v => v.storage)))).filter(Boolean).sort(),
+    colors: Array.from(new Set(products.flatMap(p => (p.variations ?? []).map(v => v.color)))).filter(Boolean).sort(),
+    countries: Array.from(new Set(products.flatMap(p => (p.variations ?? []).map(v => v.countryCode)))).filter(Boolean).sort(),
+    conditions: Array.from(new Set(products.flatMap(p => (p.variations ?? []).map(v => v.condition)))).filter(Boolean).sort()
   };
 
   const toggleSelection = (productId: string, variationId: string) => {
@@ -475,7 +476,7 @@ export default function Inventory() {
   };
 
   const selectAllInProduct = (product: Product) => {
-    const productVarIds = product.variations.map(v => v.id);
+    const productVarIds = (product.variations ?? []).map(v => v.id);
     setSelectedItems(prev => {
       const otherItems = prev.filter(item => item.productId !== product.id);
       const allSelected = productVarIds.every(id => prev.some(item => item.productId === product.id && item.variationId === id));
@@ -506,7 +507,7 @@ export default function Inventory() {
         const varIds = ids as string[];
         const product = products.find(p => p.id === productId);
         if (product) {
-          const updatedVariations = product.variations.filter(v => !varIds.includes(v.id));
+          const updatedVariations = (product.variations ?? []).filter(v => !varIds.includes(v.id));
           batch.update(doc(db, 'products', productId), {
             variations: updatedVariations,
             updatedAt: serverTimestamp()
@@ -542,7 +543,7 @@ export default function Inventory() {
         const varIds = ids as string[];
         const product = products.find(p => p.id === productId);
         if (product) {
-          const updatedVariations = product.variations.map(v => 
+          const updatedVariations = (product.variations ?? []).map(v => 
             varIds.includes(v.id) ? { ...v, price: bulkPriceValue } : v
           );
           batch.update(doc(db, 'products', productId), {
@@ -877,11 +878,11 @@ export default function Inventory() {
                         const existingProd = products.find(p => p.name === name);
                         if (existingProd) {
                           // Merge variations
-                          const existingSkus = existingProd.variations.map(v => v.sku);
+                          const existingSkus = (existingProd.variations ?? []).map(v => v.sku);
                           const newVars = data.variations.filter(v => !existingSkus.includes(v.sku));
                           if (newVars.length > 0) {
                             batch.update(doc(db, 'products', existingProd.id), {
-                              variations: [...existingProd.variations, ...newVars],
+                              variations: [...(existingProd.variations ?? []), ...newVars],
                               updatedAt: serverTimestamp()
                             });
                           }
@@ -1340,13 +1341,13 @@ export default function Inventory() {
                 </button>
                 <div className="flex items-center gap-2 text-[10px] font-bold text-blue-600 bg-blue-50 px-2.5 py-1 rounded-full border border-blue-100 uppercase tracking-tight">
                   <Box className="w-3.5 h-3.5" />
-                  {product.variations.length} Variants
+                  {(product.variations ?? []).length} Variants
                 </div>
               </div>
             </div>
 
             <div className="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {product.variations
+              {(product.variations ?? [])
                 .filter(v => {
                   const s = search.toLowerCase();
                   const matchesSearch = !s || 

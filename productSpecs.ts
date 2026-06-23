@@ -4,7 +4,7 @@ export interface ProductSpec {
   name: string;
   brand: string;
   category: string;
-  subCategory: string;
+  subCategory?: string;
   shortModel: string;
   model: string;
   processor?: string[];

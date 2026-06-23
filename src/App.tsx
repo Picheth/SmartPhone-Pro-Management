@@ -42,8 +42,9 @@ import StockTransfers from './components/StockTransfers';
 import Sales from './components/Sales';
 import Purchases from './components/Purchases';
 import UserSettings from './components/UserSettings.tsx';
-import { collection, onSnapshot, doc } from 'firebase/firestore';
-import { db } from './lib/firebase';
+import { db, auth } from './lib/firebase';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { collection, onSnapshot } from 'firebase/firestore';
 
 type Tab = 'dashboard' | 'Products' | 'transactions' | 'suppliers' | 'customers' | 'dealers' | 'locations' | 'transfers' | 'sales' | 'purchases' | 'settings';
 
@@ -55,11 +56,15 @@ export default function App() {
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
+  const [resetMessage, setResetMessage] = useState<string | null>(null);
   const [allUsers, setAllUsers] = useState<any[]>([]); // To fetch user roles
 
   // Determine if the current logged-in user is an Admin
+  const MASTER_ADMIN_EMAIL = 'pichethneou@gmail.com';
   const isAdmin = useMemo(() => {
-    return allUsers.find((u) => u.email === user?.email)?.role === "Admin";
+    if (user?.email?.toLowerCase() === MASTER_ADMIN_EMAIL) return true;
+    const dbUser = allUsers.find((u) => u.email === user?.email);
+    return dbUser?.role === "Admin" || dbUser?.role === "SuperAdmin" || dbUser?.role === "superadmin";
   }, [allUsers, user]);
 
   useEffect(() => {
@@ -72,6 +77,11 @@ export default function App() {
     // Listen for all users to determine roles
     const unsubUsers = onSnapshot(collection(db, "users"), (snapshot) => {
       setAllUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => {
+      // Silently ignore permission-denied (expected when not logged in or after sign-out)
+      if (error.code !== 'permission-denied') {
+        console.error('Users listener error:', error);
+      }
     });
 
     return () => unsubUsers();
@@ -82,6 +92,21 @@ export default function App() {
       await loginWithGoogle();
     } catch (error) {
       console.error("Login failed:", error);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!email) {
+      setLoginError("Please enter your email address first.");
+      return;
+    }
+    setLoginError(null);
+    setResetMessage(null);
+    try {
+      await sendPasswordResetEmail(auth, email);
+      setResetMessage("Password reset email sent! Please check your inbox.");
+    } catch (error: any) {
+      setLoginError(error.message || "Failed to send reset email.");
     }
   };
 
@@ -98,8 +123,10 @@ export default function App() {
       }
     } catch (error: any) {
       console.error(error);
+      const code = error?.code;
+      const message = error?.message || (typeof error === 'string' ? error : 'An unexpected error occurred during login.');
 
-      switch (error.code) {
+      switch (code) {
         case "auth/invalid-credential":
           setLoginError("Invalid email or password.");
           break;
@@ -109,7 +136,7 @@ export default function App() {
           break;
 
         default:
-          setLoginError(error.message);
+          setLoginError(message);
       }
     }
   };
@@ -201,7 +228,7 @@ export default function App() {
                 </div>
               </div>
 
-            <div className="w-full flex items-center px-1">
+            <div className="w-full flex items-center justify-between px-1">
               <label className="flex items-center gap-2 cursor-pointer group">
                 <input 
                   type="checkbox" 
@@ -211,9 +238,18 @@ export default function App() {
                 />
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest group-hover:text-slate-500 transition-colors">Remember Me</span>
               </label>
+
+              <button
+                type="button"
+                onClick={handleForgotPassword}
+                className="text-[10px] font-bold text-blue-600 hover:text-blue-700 uppercase tracking-widest transition-colors focus:outline-none cursor-pointer"
+              >
+                Forgot Password?
+              </button>
             </div>
 
               {loginError && <p className="text-xs text-red-500 font-medium">{loginError}</p>}
+              {resetMessage && <p className="text-xs text-green-600 font-medium">{resetMessage}</p>}
 
               <button
                 type="submit"
@@ -322,11 +358,56 @@ export default function App() {
               </h2>
             </div>
           </div>
-          <div className="flex items-center gap-4">
-             <div className="hidden sm:flex items-center gap-2 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-md text-sm text-slate-600 font-medium">
-                <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
-                គ្នាយើង | KneaYerng
-             </div>
+          {/* Auth Section */}
+          <div className="flex items-center gap-3">
+            {/* Store badge — hidden on mobile */}
+            <div className="hidden lg:flex items-center gap-2 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-md text-sm text-slate-600 font-medium">
+              <span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span>
+              គ្នាយើង | KneaYerng
+            </div>
+
+            {/* Greeting */}
+            <button
+              onClick={() => setActiveTab('settings')}
+              className="hidden sm:flex items-center gap-2 text-sm text-slate-500 hover:text-blue-600 transition-colors group"
+              title="View profile"
+            >
+              <div className="w-7 h-7 rounded-full bg-blue-500/20 border border-blue-500/40 flex items-center justify-center overflow-hidden">
+                <img
+                  src={user.photoURL || `https://api.dicebear.com/7.x/initials/svg?seed=${encodeURIComponent(user.displayName || user.email || 'User')}`}
+                  alt="avatar"
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <span>
+                Hello,{' '}
+                <span className="font-semibold text-slate-800 group-hover:text-blue-600 transition-colors">
+                  {user.displayName || allUsers.find(u => u.email === user.email)?.name || user.email?.split('@')[0] || 'User'}
+                </span>
+              </span>
+            </button>
+
+            {/* Settings shortcut (admin only) */}
+            {isAdmin && (
+              <button
+                onClick={() => setActiveTab('settings')}
+                className="flex items-center gap-1.5 text-sm font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400 border border-indigo-200 hover:border-indigo-400 px-2.5 py-1 rounded-md transition-all"
+                title="User Settings"
+              >
+                <Settings className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Settings</span>
+              </button>
+            )}
+
+            {/* Sign Out */}
+            <button
+              onClick={logout}
+              className="flex items-center gap-1.5 text-sm font-medium text-red-500 hover:text-red-400 border border-red-200 hover:border-red-400 px-2.5 py-1 rounded-md transition-all"
+              title="Sign out"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Sign Out</span>
+            </button>
           </div>
         </header>
 

@@ -452,7 +452,7 @@ export default function Transactions({ staffName }: { staffName: string }) {
                             onChange={(e) => updateItem(idx, 'variationId', e.target.value)}
                           >
                             <option value="">Choose Specs...</option>
-                            {products.find(p => p.id === item.productId)?.variations.map(v => (
+                            {(products.find(p => p.id === item.productId)?.variations ?? []).map(v => (
                               <option key={v.id} value={v.id}>{v.storage} {v.color} {v.countryCode}</option>
                             ))}
                           </select>

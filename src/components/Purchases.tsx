@@ -34,6 +34,7 @@ import { Transaction, Location, Product, Partner, PurchaseOrder } from '../types
 import { cn } from '../lib/utils';
 import { motion, AnimatePresence } from 'motion/react';
 import { FileText } from 'lucide-react';
+import { useToast } from '../auth/ToastContext';
 
 export default function Purchases() {
   const [purchases, setPurchases] = useState<Transaction[]>([]);
@@ -49,6 +50,7 @@ export default function Purchases() {
   const [isAdding, setIsAdding] = useState(false);
   const [isAddingOrder, setIsAddingOrder] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const { addToast } = useToast();
 
   // Form State
   const [form, setForm] = useState({
@@ -197,7 +199,7 @@ export default function Purchases() {
 
   const handleSaveOrder = async () => {
     if (!orderForm.locationId || !orderForm.partnerId || orderForm.items.length === 0 || !orderForm.staffName) {
-      alert("Please fill in all required fields and add at least one item.");
+      addToast("Please fill in all required fields and add at least one item.", "error");
       return;
     }
 
@@ -235,10 +237,10 @@ export default function Purchases() {
         staffName: '',
         items: []
       });
-      alert("Purchase Order created successfully!");
+      addToast(`Purchase Order ${orderForm.referenceNo} created successfully!`, "success");
     } catch (e) {
       console.error(e);
-      alert("Failed to create Purchase Order.");
+      addToast("Failed to create Purchase Order.", "error");
     } finally {
       setIsSaving(false);
     }
@@ -246,12 +248,12 @@ export default function Purchases() {
 
   const handleSave = async () => {
     if (!form.locationId || !form.partnerId || !form.staffName.trim()) {
-      alert("Please fill in location, supplier, and staff name.");
+      addToast("Please fill in location, supplier, and staff name.", "error");
       return;
     }
 
     if (form.items.length === 0 || form.items.some(i => i.quantity <= 0 || !i.productId || !i.variationId)) {
-      alert("Please add items with valid variations and positive quantities.");
+      addToast("Please add items with valid variations and positive quantities.", "error");
       return;
     }
 
@@ -339,9 +341,10 @@ export default function Purchases() {
         items: [],
         staffName: ''
       });
-    } catch (e) {
+      addToast(`Purchase ${form.referenceNo} recorded & stock updated!`, "success");
+    } catch (e: any) {
       console.error(e);
-      alert("Failed to save purchase. Check console for details.");
+      addToast(e?.message || "Failed to save purchase. Check console for details.", "error");
     } finally {
       setIsSaving(false);
     }
@@ -655,7 +658,7 @@ export default function Purchases() {
                                  <option value="|">Select Product...</option>
                                  {products.map(p => (
                                     <optgroup key={p.id} label={p.name}>
-                                       {p.variations.map(v => (
+                                       {(p.variations ?? []).map(v => (
                                           <option key={v.id} value={`${p.id}|${v.id}`}>
                                              {v.storage} {v.color} ({v.countryCode})
                                           </option>
@@ -855,7 +858,7 @@ export default function Purchases() {
                                  <option value="|">Select Product...</option>
                                  {products.map(p => (
                                     <optgroup key={p.id} label={p.name}>
-                                       {p.variations.map(v => (
+                                       {(p.variations ?? []).map(v => (
                                           <option key={v.id} value={`${p.id}|${v.id}`}>
                                              {v.storage} {v.color} ({v.countryCode})
                                           </option>

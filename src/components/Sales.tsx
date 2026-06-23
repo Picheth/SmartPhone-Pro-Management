@@ -535,7 +535,7 @@ export default function Sales() {
                                  onChange={e => {
                                     const [pid, vid] = e.target.value.split('|');
                                     const product = products.find(p => p.id === pid);
-                                    const variation = product?.variations.find(v => v.id === vid);
+                                    const variation = (product?.variations ?? []).find(v => v.id === vid);
                                     
                                     setForm(prev => {
                                        const newItems = [...prev.items];
@@ -552,7 +552,7 @@ export default function Sales() {
                                  <option value="|">Select...</option>
                                  {products.map(p => (
                                     <optgroup key={p.id} label={p.name}>
-                                       {p.variations.map(v => (
+                                       {(p.variations ?? []).map(v => (
                                           <option key={v.id} value={`${p.id}|${v.id}`}>
                                              {v.storage} {v.color} ({v.countryCode})
                                           </option>
